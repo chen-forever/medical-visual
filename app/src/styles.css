@@ -631,8 +631,12 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
 .viewer-btn { display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font-size: 13px; background: rgba(255, 255, 255, 0.018); }
 .viewer-btn:hover, .viewer-btn.active { color: var(--gold-2); border-color: rgba(201, 168, 106, 0.3); background: rgba(201, 168, 106, 0.06); }
 .body-viewer { position: relative; flex: 1; min-height: 0; overflow: hidden; }
-.body-viewer-host { position: absolute; inset: 0; }
-.body-viewer-host canvas { display: block; width: 100%; height: 100%; cursor: zoom-in; }
+.body-viewer-host { position: absolute; inset: 0; touch-action: none; }
+.body-viewer-host:focus-visible { outline: 1px solid rgba(201, 168, 106, 0.55); outline-offset: -2px; }
+.body-viewer-host canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.body-viewer-host canvas:active { cursor: grabbing; }
+.viewer-pan-controls { position: absolute; right: 10px; bottom: 42px; z-index: 8; display: flex; flex-direction: column; gap: 4px; }
+.viewer-pan-controls .viewer-btn { background: rgba(5, 7, 10, 0.62); backdrop-filter: blur(6px); }
 .body-label-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .body-label {
   display: flex;

@@ -6,19 +6,22 @@ import {
   useState,
 } from 'react';
 import * as THREE from 'three';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Atlas, Part, SystemId } from './atlas';
 import { SYSTEM_LABELS } from './labels';
 import { decodeModelResponse } from './model-download';
-import { ORGAN_META } from '../data';
+import { ORGAN_BY_ID, ORGAN_META } from '../data';
 import type { Lesion } from '../types';
 
 export interface BodyViewerHandle {
   zoomIn: () => void;
   zoomOut: () => void;
   reset: () => void;
+  panUp: () => void;
+  panDown: () => void;
 }
 
 interface LesionMarker extends Pick<Lesion, 'id' | 'organId' | 'label' | 'severity'> {}
@@ -323,6 +326,8 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     zoomIn: () => apiRef.current?.zoomIn(),
     zoomOut: () => apiRef.current?.zoomOut(),
     reset: () => apiRef.current?.reset(),
+    panUp: () => apiRef.current?.panUp(),
+    panDown: () => apiRef.current?.panDown(),
   }));
 
   useEffect(() => {
@@ -352,7 +357,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     host.appendChild(renderer.domElement);
     renderer.domElement.setAttribute(
       'aria-label',
-      '数字人体三维模型。可用滚轮缩放，点击脏腑查看信息；旋转已锁定。',
+      '数字人体三维模型。可上下拖动、滚轮缩放，点击脏腑查看信息；旋转已锁定。',
     );
 
     const labelRenderer = new CSS2DRenderer();
@@ -364,16 +369,18 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(30, 1, 0.005, 60);
-    camera.position.set(0, 1.02, 3.15);
+    let bodyCenterY = 0.865;
+    let bodyHeight = 1.73;
+    camera.position.set(0, bodyCenterY + 0.16, 3.04);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0.86, 0);
+    controls.target.set(0, bodyCenterY, 0);
     controls.enableRotate = false;
     controls.enablePan = false;
     controls.enableZoom = true;
     controls.enableDamping = true;
     controls.dampingFactor = 0.1;
-    controls.minDistance = 1.05;
+    controls.minDistance = 0.9;
     controls.maxDistance = 4.8;
     controls.zoomSpeed = 0.7;
 
@@ -516,6 +523,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     let downX = 0;
     let downY = 0;
     let downTime = 0;
+    let dragging = false;
+    let lastDragY = 0;
+    let activePointerId = -1;
     let currentAnchors = organAnchors;
     let lastLesionKey = '';
     let lastLabelId = '';
@@ -523,16 +533,23 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     let lastClip = -1;
     let lastFrame = performance.now();
 
+    const fitDistance = () => {
+      const halfFov = THREE.MathUtils.degToRad(camera.fov) / 2;
+      const base = (bodyHeight / 2) / Math.tan(halfFov);
+      const factor = camera.aspect < 0.9 ? 1.12 : 0.94;
+      return THREE.MathUtils.clamp(base * factor, 1.5, 5.0);
+    };
+
     const fitCamera = () => {
       const width = host.clientWidth || 1;
       const height = host.clientHeight || 1;
       camera.aspect = width / height;
       camera.fov = width < 640 ? 34 : 30;
       camera.updateProjectionMatrix();
-      const distance = camera.aspect < 0.9 ? 3.8 : 3.15;
-      controls.target.set(0, 0.86, 0);
-      camera.position.set(0, 1.02, distance);
-      controls.minDistance = 1.05;
+      const distance = fitDistance();
+      controls.target.set(0, bodyCenterY, 0);
+      camera.position.set(0, bodyCenterY + 0.16, distance);
+      controls.minDistance = 0.9;
       controls.maxDistance = 4.8;
       controls.update();
     };
@@ -549,9 +566,8 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     resize();
 
     const reset = () => {
-      const distance = camera.aspect < 0.9 ? 3.8 : 3.15;
-      controls.target.set(0, 0.86, 0);
-      camera.position.set(0, 1.02, distance);
+      controls.target.set(0, bodyCenterY, 0);
+      camera.position.set(0, bodyCenterY + 0.16, fitDistance());
       focusKey = '';
       controls.update();
     };
@@ -565,10 +581,28 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       camera.position.copy(controls.target).add(direction.normalize().multiplyScalar(length));
       controls.update();
     };
+    // Vertical-only pan: the model moves up/down while rotation stays locked.
+    const panBy = (deltaY: number) => {
+      const height = host.clientHeight || 1;
+      const distance = camera.position.distanceTo(controls.target);
+      const worldPerPixel =
+        (2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / height;
+      const nextY = THREE.MathUtils.clamp(
+        controls.target.y + deltaY * worldPerPixel,
+        0.45,
+        1.3,
+      );
+      const applied = nextY - controls.target.y;
+      controls.target.y = nextY;
+      camera.position.y += applied;
+      controls.update();
+    };
     apiRef.current = {
       zoomIn: () => zoom(0.82),
       zoomOut: () => zoom(1.22),
       reset,
+      panUp: () => panBy(-18),
+      panDown: () => panBy(18),
     };
 
     const clearMarkers = () => {
@@ -650,11 +684,37 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     };
 
     const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
       downX = event.clientX;
       downY = event.clientY;
       downTime = performance.now();
+      dragging = false;
+      lastDragY = event.clientY;
+      activePointerId = event.pointerId;
+      renderer.domElement.setPointerCapture?.(event.pointerId);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) return;
+      if (!dragging) {
+        if (event.buttons !== 1 || Math.abs(event.clientY - downY) <= 4) return;
+        dragging = true;
+        lastDragY = event.clientY;
+        renderer.domElement.style.cursor = 'grabbing';
+      }
+      const delta = event.clientY - lastDragY;
+      lastDragY = event.clientY;
+      if (delta) panBy(delta);
+      event.preventDefault();
     };
     const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) return;
+      renderer.domElement.releasePointerCapture?.(event.pointerId);
+      activePointerId = -1;
+      renderer.domElement.style.cursor = 'grab';
+      if (dragging) {
+        dragging = false;
+        return;
+      }
       const moved = Math.hypot(event.clientX - downX, event.clientY - downY);
       if (moved > 6 || performance.now() - downTime > 650) return;
       if (!currentAnchors.length) return;
@@ -664,10 +724,8 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         -((event.clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
-      const visibleMeshes = [...systemGroups.values()]
-        .filter(group => group.visible)
-        .flatMap(group => group.children);
-      const hits = raycaster.intersectObjects(visibleMeshes, false);
+      const visibleMeshes = [...systemGroups.values()].filter(group => group.visible);
+      const hits = raycaster.intersectObjects(visibleMeshes, true);
       if (!hits.length) return;
       hitPoint.copy(hits[0].point);
       let nearest: (typeof currentAnchors)[number] | null = null;
@@ -683,8 +741,17 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         propsRef.current.onSelectOrgan?.(nearest.id);
       }
     };
+    const onPointerCancel = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) return;
+      activePointerId = -1;
+      dragging = false;
+      renderer.domElement.style.cursor = 'grab';
+    };
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    renderer.domElement.addEventListener('pointermove', onPointerMove);
     renderer.domElement.addEventListener('pointerup', onPointerUp);
+    renderer.domElement.addEventListener('pointercancel', onPointerCancel);
+    renderer.domElement.style.cursor = 'grab';
 
     const animate = () => {
       if (disposed) return;
@@ -781,6 +848,19 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         if (disposed) return;
         setProgress(6);
 
+        const bodyBox = new THREE.Box3();
+        for (const part of atlas.parts) {
+          if (part.system !== 'integumentary') continue;
+          bodyBox.expandByPoint(new THREE.Vector3().fromArray(part.bounds[0]));
+          bodyBox.expandByPoint(new THREE.Vector3().fromArray(part.bounds[1]));
+        }
+        if (!bodyBox.isEmpty()) {
+          const size = bodyBox.getSize(new THREE.Vector3());
+          bodyCenterY = (bodyBox.min.y + bodyBox.max.y) / 2;
+          bodyHeight = Math.max(size.y, 0.5);
+          fitCamera();
+        }
+
         currentAnchors = buildOrganAnchors(atlas);
         organAnchors.push(...currentAnchors);
 
@@ -844,7 +924,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       cancelAnimationFrame(frame);
       observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
+      renderer.domElement.removeEventListener('pointermove', onPointerMove);
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
+      renderer.domElement.removeEventListener('pointercancel', onPointerCancel);
       controls.dispose();
       scene.traverse(obj => {
         if (obj instanceof THREE.Mesh || obj instanceof THREE.Points) {
@@ -870,11 +952,31 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       ? '部分图层未载入'
       : detailLoaded < detailTotal
         ? `细节载入 ${detailPct}%`
-        : '静止模式 · 仅缩放';
+        : '上下拖动 · 滚轮缩放';
 
   return (
     <div className={`body-viewer ${className}`}>
-      <div ref={hostRef} className="body-viewer-host" />
+      <div
+        ref={hostRef}
+        className="body-viewer-host"
+        tabIndex={0}
+        onKeyDown={event => {
+          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+          event.preventDefault();
+          if (event.key === 'ArrowUp') apiRef.current?.panUp();
+          else apiRef.current?.panDown();
+        }}
+      />
+      {ready && (
+        <div className="viewer-pan-controls" aria-label="垂直移动模型">
+          <button className="viewer-btn" onClick={() => apiRef.current?.panUp()} aria-label="向上移动">
+            <ChevronUp size={14} />
+          </button>
+          <button className="viewer-btn" onClick={() => apiRef.current?.panDown()} aria-label="向下移动">
+            <ChevronDown size={14} />
+          </button>
+        </div>
+      )}
       <div className="viewer-corner viewer-corner-left">
         <span className="viewer-live-dot" />
         <span>{status}</span>
