@@ -1,0 +1,10 @@
+{
+  "name": "qihuang-state-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node index.mjs",
+    "start": "node index.mjs",
+    "test": "node --test"
+  }
+}

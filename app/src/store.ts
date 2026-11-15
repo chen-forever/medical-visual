@@ -8,17 +8,19 @@ import {
   ORGAN_IDS,
   SIMULATION,
 } from './data';
-import type { AnalysisResult, Formula, Lesion, Patient, StepId } from './types';
+import type { AnalysisMeta, AnalysisResult, Formula, Lesion, Patient, StepId } from './types';
 
 interface CaseStore {
   patient: Patient;
   analysis: AnalysisResult;
+  analysisMeta: AnalysisMeta;
   primaryPatternId: string;
   lesions: Lesion[];
   formula: Formula;
   horizon: 7 | 14 | 30;
   completed: StepId[];
   setPatient: (patient: Patient) => void;
+  setAnalysis: (analysis: AnalysisResult, meta: AnalysisMeta) => void;
   setPrimaryPattern: (id: string) => void;
   setLesions: (lesions: Lesion[]) => void;
   addLesion: (lesion: Lesion) => void;
@@ -29,9 +31,18 @@ interface CaseStore {
   resetDemo: () => void;
 }
 
+const DEMO_META: AnalysisMeta = {
+  provider: 'demo',
+  model: '演示规则数据',
+  latencyMs: 0,
+  fallback: true,
+  promptVersion: 'demo',
+};
+
 const initial = {
   patient: DEMO_PATIENT,
   analysis: DEMO_ANALYSIS,
+  analysisMeta: DEMO_META,
   primaryPatternId: DEMO_ANALYSIS.primaryId,
   lesions: DEMO_LESIONS,
   formula: DEMO_FORMULA,
@@ -44,6 +55,12 @@ export const useCaseStore = create<CaseStore>()(
     (set, get) => ({
       ...initial,
       setPatient: patient => set({ patient }),
+      setAnalysis: (analysis, analysisMeta) =>
+        set({
+          analysis,
+          analysisMeta,
+          primaryPatternId: analysis.primaryId || analysis.patterns[0]?.id || '',
+        }),
       setPrimaryPattern: primaryPatternId => set({ primaryPatternId }),
       setLesions: lesions => set({ lesions }),
       addLesion: lesion => set({ lesions: [...get().lesions, lesion] }),
@@ -60,13 +77,14 @@ export const useCaseStore = create<CaseStore>()(
     }),
     {
       name: 'qihuang-case-v1',
-      version: 2,
+      version: 3,
       migrate: persisted => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as Partial<CaseStore>;
         const allowed = new Set(ORGAN_IDS);
         return {
           ...state,
+          analysisMeta: state.analysisMeta ?? { ...DEMO_META },
           lesions: Array.isArray(state.lesions)
             ? state.lesions.filter(lesion => allowed.has(lesion.organId))
             : [],
@@ -75,6 +93,7 @@ export const useCaseStore = create<CaseStore>()(
       partialize: state => ({
         patient: state.patient,
         analysis: state.analysis,
+        analysisMeta: state.analysisMeta,
         primaryPatternId: state.primaryPatternId,
         lesions: state.lesions,
         formula: state.formula,

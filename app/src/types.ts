@@ -46,6 +46,15 @@ export interface AnalysisResult {
   disclaimer: string;
 }
 
+export interface AnalysisMeta {
+  provider: 'deepseek' | 'rules' | 'demo';
+  model: string;
+  latencyMs: number;
+  fallback: boolean;
+  promptVersion: string;
+  blocked?: boolean;
+}
+
 export interface Herb {
   id: string;
   name: string;

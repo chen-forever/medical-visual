@@ -19,6 +19,32 @@ npm run build
 npm run preview
 ```
 
+## DeepSeek 分析（本地 BFF）
+
+真实 Key 不放在前端。先启动服务端代理：
+
+```bash
+cd server
+cp .env.example .env.local
+# 在 .env.local 填入新的 DEEPSEEK_API_KEY
+npm run dev
+```
+
+再启动前端：
+
+```bash
+cd app
+npm run dev
+```
+
+Vite 会把 `/api` 代理到 `http://127.0.0.1:8787`。分析页点击「DeepSeek 分析」才会调用 API；没有 Key 或调用失败时保留当前演示分析，并显示可读错误。
+
+- 服务端：`server/index.mjs`
+- 模型：`deepseek-flash`
+- 请求方式：JSON Output + 关闭 thinking
+- 未配置 Key 时 `/api/health` 返回 `configured: false`
+- **不要提交 `.env.local`**；如果 Key 曾在聊天/公开场合出现，应先撤销并重新生成
+
 ## 十页路由
 
 | 路由 | 页面 |

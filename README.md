@@ -12,6 +12,17 @@ npm run dev
 
 打开 `http://127.0.0.1:5173/`。
 
+真实 DeepSeek 分析需要同时启动本地 BFF：
+
+```bash
+cd server
+cp .env.example .env.local
+# 在 .env.local 填入新的 DEEPSEEK_API_KEY
+npm run dev
+```
+
+前端 `npm run dev` 会把 `/api` 代理到 `http://127.0.0.1:8787`。没有 Key 时前端保留演示分析，不会把 Key 暴露在浏览器。Key 曾公开暴露时应先撤销/轮换，且不要提交 `.env.local`。
+
 ## 当前实现
 
 - 十页闭环：工作台 → 四诊 → 分析 → 数字人体 → 内部观察 → 病位 → 状态 → 药方 → 时间模拟 → 报告。
