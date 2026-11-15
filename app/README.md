@@ -39,7 +39,8 @@ npm run preview
 ## 3D 模型
 
 - 数据：**Human Atlas / BodyParts3D 4.0**，成年男性参考解剖，CC BY 4.0。
-- 位置：`public/models/human-atlas/`，共约 33 MB，按 15 个分块加载。
+- 位置：`public/models/human-atlas/`，精简包约 **10.4 MB 几何 / 11.9 MB 目录**，单分块加载。
+- 压缩记录：`public/models/human-atlas/COMPRESSION.md`。
 - 视角：默认正面，**旋转锁定**，只支持缩放、图层开关和复位。
 - 交互：点击脏腑显示名称、中医归属与经络；图层可独立显示/隐藏。
 - 器官层：**胃、胆、小肠、大肠、膀胱、心、肺、肝、脾、肾**；体表、骨骼、肌肉为独立基础层。

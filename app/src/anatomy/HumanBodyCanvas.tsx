@@ -85,7 +85,7 @@ function organPose(organId: string): THREE.Vector3 {
  * view are assembled first, then the remaining anatomy chunks stream in.
  * The four core chunks total ~8.8 MB gzipped (vs ~33 MB for the whole atlas).
  */
-const CORE_CHUNK_BUDGET = 10 * 1024 * 1024;
+const CORE_CHUNK_BUDGET = 12 * 1024 * 1024;
 const MAX_ORGAN_PARTICLES = 340;
 const CORE_SYSTEMS: SystemId[] = [
   'integumentary',
@@ -1569,7 +1569,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
             <div className="viewer-progress">
               <i style={{ width: `${Math.max(2, progress)}%` }} />
             </div>
-            <small>{progress}% · 首屏约 9 MB，其余解剖细节后台载入</small>
+            <small>{progress}% · 约 10 MB 精简模型 · 一次加载后完整可用</small>
           </div>
         </div>
       )}
