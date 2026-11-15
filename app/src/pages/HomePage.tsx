@@ -1,5 +1,6 @@
 import { ArrowRight, ChevronRight, Clock3, Play, ShieldCheck, Sparkles } from 'lucide-react';
 import BodyGlyph from '../components/BodyGlyph';
+import { Seal, TaijiMark } from '../components/TcmOrnaments';
 import { STEPS } from '../data';
 import { go } from '../navigation';
 import { useCaseStore, usePrimaryPattern } from '../store';
@@ -14,6 +15,15 @@ export default function HomePage() {
     <div className="home-page">
       <section className="home-hero">
         <div className="home-hero-copy">
+          <div className="hero-tcm-row">
+            <Seal text="岐黄" size="sm" />
+            <div className="tcm-diagnosis-chips" aria-label="望闻问切">
+              <span className="tcm-diagnosis-chip">望</span>
+              <span className="tcm-diagnosis-chip">闻</span>
+              <span className="tcm-diagnosis-chip">问</span>
+              <span className="tcm-diagnosis-chip">切</span>
+            </div>
+          </div>
           <div className="eyebrow"><span /> 中医状态沟通工具 / v0.1</div>
           <h2>把一次四诊，<br />讲成一条<em>看得见</em>的状态线。</h2>
           <p>
@@ -36,9 +46,10 @@ export default function HomePage() {
         </div>
 
         <div className="home-hero-art">
+          <TaijiMark />
           <div className="hero-orbit hero-orbit-a" />
           <div className="hero-orbit hero-orbit-b" />
-          <BodyGlyph />
+          <BodyGlyph tone="light" />
           <div className="hero-float hero-float-a"><i className="dot teal" /> 心神失养</div>
           <div className="hero-float hero-float-b"><i className="dot gold" /> 湿象 62%</div>
           <div className="hero-float hero-float-c"><i className="dot red" /> 脾失健运</div>

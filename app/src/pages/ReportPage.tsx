@@ -1,5 +1,6 @@
 import { ArrowLeft, Download, FileText, Printer, ShieldCheck } from 'lucide-react';
 import BodyGlyph from '../components/BodyGlyph';
+import { MeridianDivider, Seal } from '../components/TcmOrnaments';
 import { ORGAN_BY_ID, SIMULATION } from '../data';
 import { go } from '../navigation';
 import { useCaseStore, usePrimaryPattern } from '../store';
@@ -25,6 +26,7 @@ export default function ReportPage() {
       </div>
 
       <article className="report-paper" id="report-paper">
+        <Seal text="辨证论治" vertical size="sm" className="report-seal" />
         <header className="report-header">
           <div className="report-brand">
             <div className="brand-seal small">黄</div>
@@ -78,7 +80,7 @@ export default function ReportPage() {
           <div className="report-block report-body-block">
             <div className="report-block-head"><span>02</span><h2>病位与状态示意</h2></div>
             <div className="report-body-visual">
-              <BodyGlyph />
+              <BodyGlyph tone="light" />
               <div className="report-legend">
                 <div><i className="legend-dot red" /> 主要病位</div>
                 <div><i className="legend-dot gold" /> 次要 / 观察</div>
@@ -136,6 +138,7 @@ export default function ReportPage() {
         </section>
 
         <footer className="report-footer">
+          <MeridianDivider label="岐黄 · 辨证论治" />
           <div className="report-disclaimer">
             <ShieldCheck size={15} />
             <p>

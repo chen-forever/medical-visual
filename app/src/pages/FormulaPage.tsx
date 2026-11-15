@@ -97,6 +97,13 @@ export default function FormulaPage() {
             <span className="record-chip"><FlaskConical size={13} /> 仅记录</span>
           </div>
 
+          <div className="tcm-formula-legend" aria-label="君臣佐使">
+            <span><b>君</b>主病之药</span>
+            <span><b>臣</b>辅助君药</span>
+            <span><b>佐</b>兼治兼制</span>
+            <span><b>使</b>引经调和</span>
+          </div>
+
           <div className="formula-top">
             <label className="field">
               <span>方名</span>

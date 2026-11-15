@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { ArrowRight, Droplets, Eye, EyeOff, Info, RotateCcw, Sparkles, Wind } from 'lucide-react';
 import { HumanBodyCanvas, type BodyViewerHandle } from '../anatomy/HumanBodyCanvas';
 import type { SystemId } from '../anatomy/atlas';
+import { CloudCorner, MeridianDivider, Seal } from '../components/TcmOrnaments';
 import { ORGAN_BY_ID } from '../data';
 import { resolvePatternVisual } from '../data/patternVisuals';
 import { go } from '../navigation';
@@ -31,6 +32,14 @@ const FLOW_LABEL: Record<string, string> = {
   exchange: '双向交流',
 };
 
+const FIVE_ELEMENTS = [
+  { key: 'wood', label: '木', organs: ['liver'] },
+  { key: 'fire', label: '火', organs: ['heart'] },
+  { key: 'earth', label: '土', organs: ['spleen', 'stomach'] },
+  { key: 'metal', label: '金', organs: ['lung'] },
+  { key: 'water', label: '水', organs: ['kidney'] },
+];
+
 const STATE_METRICS = [
   { id: 'qi', label: '气虚', value: 68, color: '#4fb3a9', note: '乏力、语声低微、脉细弱' },
   { id: 'damp', label: '湿困', value: 54, color: '#c9a86a', note: '舌淡胖、便溏、纳差' },
@@ -42,6 +51,7 @@ export default function StatePage() {
   const pattern = usePrimaryPattern();
   const patient = useCaseStore(state => state.patient);
   const visual = useMemo(() => resolvePatternVisual(pattern), [pattern]);
+  const affected = new Set(Object.keys(visual.organs));
   const [particles, setParticles] = useState(true);
   const [selected, setSelected] = useState('heart');
 
@@ -71,18 +81,19 @@ export default function StatePage() {
             onSelectOrgan={setSelected}
             particles={particles}
             organVisuals={visual.organs}
-            focusOnSelect
           />
           <div className="state-overlay">
             <div className="state-overlay-card">
               <span className="panel-kicker">CURRENT READING</span>
-              <strong>{pattern?.name}</strong>
+              <div className="state-overlay-title">
+                <Seal text="辨证" size="sm" />
+                <strong>{pattern?.name}</strong>
+              </div>
               <p>{patient.alias} · 当前状态切片</p>
             </div>
             <div className="state-particle-key">
               <span><i style={{ background: visual.accent }} /> 病位器官</span>
-              <span><i className="particle-dot teal" /> 气机</span>
-              <span><i className="particle-dot gold" /> 湿浊</span>
+              <span>{Object.keys(visual.organs).length} 个病位 · 粒子可开关</span>
             </div>
           </div>
         </section>
@@ -132,9 +143,20 @@ export default function StatePage() {
               {!Object.keys(visual.organs).length && (
                 <div><span className="legend-orb gold" /><div><b>暂无可映射器官</b><p>当前证型未对应独立器官网格。</p></div></div>
               )}
-              <div><span className="legend-orb teal" /><div><b>青金 · 气机</b><p>底层气机示意，始终弱于病位粒子。</p></div></div>
             </div>
             <p className="small-copy" style={{ marginTop: 9 }}>{visual.note}</p>
+            <MeridianDivider label="五行 / 脏腑" />
+            <div className="tcm-five-elements">
+              {FIVE_ELEMENTS.map(element => (
+                <span
+                  key={element.key}
+                  className={`tcm-element ${element.key} ${element.organs.some(id => affected.has(id)) ? 'active' : ''}`}
+                >
+                  <i /> {element.label}
+                </span>
+              ))}
+            </div>
+            <CloudCorner position="tr" />
           </section>
 
           <section className="panel side-panel">

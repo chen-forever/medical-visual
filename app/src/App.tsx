@@ -17,6 +17,7 @@ import {
   Waves,
   X,
 } from 'lucide-react';
+import { Seal } from './components/TcmOrnaments';
 import { STEPS } from './data';
 import { useCaseStore } from './store';
 import type { StepId } from './types';
@@ -51,7 +52,7 @@ const PAGE_META: Record<StepId, { kicker: string; title: string; desc: string }>
   body: { kicker: '呈现 / DIGITAL BODY', title: '数字人体', desc: '用半透明人体与脏腑图层，把抽象的证型落到可指认的位置。' },
   inside: { kicker: '呈现 / INTERIOR', title: '人体内部观察', desc: '剖面、隔离与器官细节；胃壁分层为示意，不冒充真实解剖。' },
   lesion: { kicker: '呈现 / LOCATION', title: '病位定位', desc: '把主要病位控制在 3～5 个，每个标记都能回到证据。' },
-  state: { kicker: '呈现 / STATE', title: '当前状态', desc: '气机、湿象与心神状态用颜色、粒子与图例表达，不做真实生理预测。' },
+  state: { kicker: '呈现 / STATE', title: '当前状态', desc: '把病位器官的虚实寒热用颜色、粒子与连线表达，不做真实生理预测。' },
   formula: { kicker: '输出 / FORMULA', title: '输入药方', desc: '记录医生已经给出的方案；系统不生成剂量建议，也不判断处方优劣。' },
   timeline: { kicker: '输出 / TRAJECTORY', title: '7 / 14 / 30 天变化', desc: '基于规则的示意推演，呈现趋势与假设，不承诺疗效。' },
   report: { kicker: '输出 / REPORT', title: '患者报告', desc: '把这次沟通压缩成两页 A4：图、证型、病位、方案与边界说明。' },
@@ -203,6 +204,7 @@ export default function App() {
         </nav>
 
         <div className="sidebar-foot">
+          <Seal text="辨证论治" vertical size="sm" className="sidebar-tcm-seal" />
           <div className="sidebar-note">
             <ShieldCheck size={14} />
             <span>演示 / 沟通示意<br />不构成诊断与治疗建议</span>

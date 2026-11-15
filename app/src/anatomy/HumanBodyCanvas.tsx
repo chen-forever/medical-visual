@@ -600,8 +600,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       const material = new THREE.LineBasicMaterial({
         color: activeOrganVisuals[ids[0]]?.color ?? '#D5C8B0',
         transparent: true,
-        opacity: 0.16,
+        opacity: 0.2,
         depthWrite: false,
+        depthTest: false,
       });
       connectorLine = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(points),
@@ -614,8 +615,8 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       if (organFx.some(field => field.organId === organId)) return;
       const entry = organIndex.get(organId);
       if (!entry) return;
-      const count = Math.round(80 + state.particle.density * 220);
-      const spread = Math.max(0.05, Math.min(0.12, entry.radius * 0.65));
+      const count = Math.round(110 + state.particle.density * 260);
+      const spread = Math.max(0.06, Math.min(0.14, entry.radius * 0.75));
       const positions = new Float32Array(count * 3);
       const seed = new Float32Array(count * 4);
       for (let i = 0; i < count; i += 1) {
@@ -635,9 +636,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       const material = new THREE.PointsMaterial({
         color: state.particle.color,
-        size: state.particle.kind === 'flame' ? 0.011 : 0.008,
+        size: state.particle.kind === 'flame' ? 0.014 : 0.012,
         transparent: true,
-        opacity: 0.78,
+        opacity: 0.9,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         sizeAttenuation: true,
@@ -655,7 +656,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
           depthWrite: false,
           depthTest: false,
           blending: THREE.AdditiveBlending,
-          opacity: (state.halo ?? 0.3) * 0.5,
+          opacity: (state.halo ?? 0.3) * 0.58,
         }),
       );
       halo.position.copy(entry.center);
@@ -1005,8 +1006,10 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
           const state = current.organVisuals?.[current.selectedOrganId];
           selectionSprite.position.copy(anchor.point);
           selectionSprite.material.color.set(state?.color ?? anchor.color);
-          selectionSprite.scale.setScalar(state ? 0.28 : 0.22);
-          selectionSprite.visible = true;
+          selectionSprite.scale.setScalar(state ? 0.2 : 0.22);
+          // When the organ has an abnormality layer, the lesion particle/halo
+          // carries the meaning; the old white selection glow would wash it out.
+          selectionSprite.visible = !state;
           const meta = ORGAN_META.find(o => o.id === current.selectedOrganId);
           const label = document.createElement('div');
           label.className = 'body-label selected-organ-label';
@@ -1095,6 +1098,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       const dt = Math.min((now - lastFrame) / 1000, 0.06);
       lastFrame = now;
       const current = propsRef.current;
+      const hasOrganVisuals = Object.keys(current.organVisuals).length > 0;
 
       if (current.organVisualsKey !== activeVisualsKey) {
         activeVisualsKey = current.organVisualsKey;
@@ -1104,6 +1108,14 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       for (const [system, group] of systemGroups) {
         const bodyClipped = system === 'integumentary' && current.clip > 0.06;
         group.visible = current.visibleSystems.includes(system) && !bodyClipped;
+      }
+      const skeletalMaterial = materials.get('skeletal') as THREE.MeshStandardMaterial | undefined;
+      if (skeletalMaterial) {
+        const targetOpacity = hasOrganVisuals ? 0.28 : 0.5;
+        if (Math.abs(skeletalMaterial.opacity - targetOpacity) > 0.01) {
+          skeletalMaterial.opacity = targetOpacity;
+          skeletalMaterial.needsUpdate = true;
+        }
       }
       ring.visible = current.clip < 0.02;
       ring2.visible = current.clip < 0.02;
@@ -1123,8 +1135,12 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       }
 
       if (current.particles) {
-        qi.points.visible = true;
-        damp.points.visible = true;
+        // When organ-level state particles are active they are the message;
+        // the old body-wide qi/damp cloud would compete and pool near the feet.
+        qi.points.visible = !hasOrganVisuals;
+        damp.points.visible = !hasOrganVisuals;
+        (qi.points.material as THREE.PointsMaterial).opacity = 0.65;
+        (damp.points.material as THREE.PointsMaterial).opacity = 0.65;
         const t = now * 0.00018;
         const qPos = qi.points.geometry.getAttribute('position') as THREE.BufferAttribute;
         for (let i = 0; i < qPos.count; i++) {
