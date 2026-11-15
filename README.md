@@ -118,7 +118,7 @@ npm test
 
 ## 文档
 
-- [项目工作总结](<docs/PROJECT_SUMMARY.md>)
+- [总体规划与项目总结](<docs/PROJECT_SUMMARY.md>)
 - [跨电脑运行](<docs/REPRODUCIBILITY.md>)
 - [GitHub 发布](<docs/GITHUB_PUBLISH.md>)
 - [资产与许可](<docs/ASSETS.md>)

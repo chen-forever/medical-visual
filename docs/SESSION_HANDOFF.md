@@ -7,7 +7,7 @@
 ## 1. 先读什么
 
 1. `README.md`：从零运行；
-2. `docs/PROJECT_SUMMARY.md`：完整工作总结；
+2. `docs/PROJECT_SUMMARY.md`：总体规划与项目总结；
 3. `docs/REPRODUCIBILITY.md`：跨电脑运行；
 4. `docs/GITHUB_PUBLISH.md`：发布步骤；
 5. `server/README.md`、`app/README.md`；
