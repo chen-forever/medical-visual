@@ -2,9 +2,8 @@
 
 ## 仓库建议
 
-- 名称：`qihuang-state`
+- 名称：`medical-visual`
 - 可见性：先 Private
-- 不要初始化 README、.gitignore 或 License
 - 默认分支：`main`
 
 ## 前置检查
@@ -32,7 +31,7 @@ git tag -a v0.2.0 -m "Qihuang State v0.2.0"
 ## 添加 remote
 
 ```bash
-git remote add origin https://github.com/<用户名>/qihuang-state.git
+git remote add origin https://github.com/chen-forever/medical-visual.git
 git push -u origin main
 git push origin v0.2.0
 ```

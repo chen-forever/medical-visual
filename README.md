@@ -23,8 +23,8 @@
 前置条件：**Node.js 24**（`node --version` 显示 v24）。
 
 ```bash
-git clone <repository-url>
-cd qihuang-state
+git clone https://github.com/chen-forever/medical-visual.git
+cd medical-visual
 npm run setup
 npm start
 ```
