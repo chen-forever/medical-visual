@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readFile, stat as statFile } from 'node:fs/promises';
-import { extname, join, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   SESSION_COOKIE,
@@ -40,7 +40,9 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGIN || 'http://127.0.0.1:5173,ht
   .map(item => item.trim())
   .filter(Boolean);
 const STATIC_DIR = process.env.STATIC_DIR
-  ? resolve(process.cwd(), process.env.STATIC_DIR)
+  ? isAbsolute(process.env.STATIC_DIR)
+    ? process.env.STATIC_DIR
+    : resolve(dirname(fileURLToPath(import.meta.url)), process.env.STATIC_DIR)
   : fileURLToPath(new URL('../app/dist', import.meta.url));
 const RATE_LIMIT = 6;
 const RATE_WINDOW_MS = 60_000;
