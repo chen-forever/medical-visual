@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Droplets, Eye, EyeOff, Info, RotateCcw, Sparkles, Wind } from 'lucide-react';
 import { HumanBodyCanvas, type BodyViewerHandle } from '../anatomy/HumanBodyCanvas';
 import type { SystemId } from '../anatomy/atlas';
@@ -55,6 +55,12 @@ export default function StatePage() {
   const [particles, setParticles] = useState(true);
   const [selected, setSelected] = useState('heart');
 
+  useEffect(() => {
+    if (!visual.organs[selected]) {
+      setSelected(Object.keys(visual.organs)[0] ?? 'heart');
+    }
+  }, [selected, visual]);
+
   return (
     <div className="state-page">
       <div className="state-layout">
@@ -81,6 +87,8 @@ export default function StatePage() {
             onSelectOrgan={setSelected}
             particles={particles}
             organVisuals={visual.organs}
+            visibleOrgans={Object.keys(visual.organs)}
+            isolateOrgans
           />
           <div className="state-overlay">
             <div className="state-overlay-card">

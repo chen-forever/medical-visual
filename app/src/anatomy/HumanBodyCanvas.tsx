@@ -45,6 +45,8 @@ interface Props {
   clip?: number;
   particles?: boolean;
   organVisuals?: Record<string, OrganAbnormality>;
+  visibleOrgans?: string[];
+  isolateOrgans?: boolean;
   lesions?: LesionMarker[];
   focusOnSelect?: boolean;
   className?: string;
@@ -163,10 +165,10 @@ const STYLE: Record<SystemId, { color: string; opacity: number; roughness: numbe
   arterial: { color: '#b84a3e', opacity: 0.62, roughness: 0.5 },
   venous: { color: '#4f7391', opacity: 0.58, roughness: 0.5 },
   nervous: { color: '#c9a86a', opacity: 0.72, roughness: 0.48 },
-  respiratory: { color: '#b98a91', opacity: 0.9, roughness: 0.48 },
-  digestive: { color: '#b68b63', opacity: 0.92, roughness: 0.46 },
-  urinary: { color: '#b27a62', opacity: 0.9, roughness: 0.48 },
-  lymphatic: { color: '#8ca181', opacity: 0.72, roughness: 0.5 },
+  respiratory: { color: '#b98a91', opacity: 0.88, roughness: 0.48 },
+  digestive: { color: '#b68b63', opacity: 0.55, roughness: 0.46 },
+  urinary: { color: '#b27a62', opacity: 0.92, roughness: 0.48 },
+  lymphatic: { color: '#8ca181', opacity: 0.45, roughness: 0.5 },
   endocrine: { color: '#c5a09a', opacity: 0.86, roughness: 0.48 },
   reproductive: { color: '#bda098', opacity: 0.82, roughness: 0.5 },
   integumentary: { color: '#9fbab5', opacity: 0.09, roughness: 0.55 },
@@ -340,6 +342,8 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     clip = 0,
     particles = false,
     organVisuals = {},
+    visibleOrgans,
+    isolateOrgans = false,
     lesions = [],
     focusOnSelect = false,
     className = '',
@@ -348,7 +352,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const lesionLineRefs = useRef<Record<string, SVGLineElement | null>>({});
   const organVisualsKey = JSON.stringify(organVisuals);
+  const organVisibilityKey = JSON.stringify({ visibleOrgans, isolateOrgans });
   const propsRef = useRef({
     visibleSystems,
     selectedOrganId,
@@ -357,6 +363,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     particles,
     organVisuals,
     organVisualsKey,
+    visibleOrgans,
+    isolateOrgans,
+    organVisibilityKey,
     lesions,
     focusOnSelect,
   });
@@ -368,6 +377,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     particles,
     organVisuals,
     organVisualsKey,
+    visibleOrgans,
+    isolateOrgans,
+    organVisibilityKey,
     lesions,
     focusOnSelect,
   };
@@ -483,6 +495,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     const materials = new Map<SystemId, THREE.Material>();
     const organGroups = new Map<string, THREE.Group>();
     const organMaterials = new Map<string, THREE.MeshStandardMaterial>();
+    const organRoot = new THREE.Group();
+    organRoot.name = 'organ-root';
+    scene.add(organRoot);
     const organIndex = new Map<string, OrganIndexEntry>();
     const partToOrgan = new Map<string, string>();
     const organLoaded = new Set<string>();
@@ -504,6 +519,19 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       return group;
     };
 
+    // Stomach/spleen/intestine opacity is deliberately low so kidneys and the
+    // bladder remain readable from the default front view.
+    const ORGAN_OPACITY: Record<string, number> = {
+      heart: 0.95,
+      lung: 0.86,
+      liver: 0.6,
+      spleen: 0.42,
+      stomach: 0.42,
+      kidney: 0.95,
+      brain: 0.9,
+      gallbladder: 0.6,
+    };
+
     const getSystemMaterial = (system: SystemId) => {
       const existing = materials.get(system);
       if (existing) return existing;
@@ -519,7 +547,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
           transparent: style.opacity < 1,
           opacity: style.opacity,
           side: THREE.DoubleSide,
-          depthWrite: style.opacity > 0.4,
+          depthWrite: style.opacity > 0.65,
         });
       }
       materials.set(system, material);
@@ -531,6 +559,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       if (existing) return existing;
       const meta = ORGAN_BY_ID[organId];
       const base = meta?.color ?? '#c9a86a';
+      const opacity = ORGAN_OPACITY[organId] ?? 0.9;
       const material = new THREE.MeshStandardMaterial({
         color: base,
         roughness: 0.45,
@@ -538,9 +567,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         emissive: new THREE.Color(base).multiplyScalar(0.22),
         emissiveIntensity: 0.22,
         transparent: true,
-        opacity: 0.95,
+        opacity,
         side: THREE.DoubleSide,
-        depthWrite: true,
+        depthWrite: opacity > 0.7,
       });
       organMaterials.set(organId, material);
       return material;
@@ -554,7 +583,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         group = new THREE.Group();
         group.name = `organ-${organId}`;
         group.position.copy(entry.center);
-        getSystemGroup(entry.meta.system as SystemId).add(group);
+        organRoot.add(group);
         organGroups.set(organId, group);
       }
       return group;
@@ -639,6 +668,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         size: state.particle.kind === 'flame' ? 0.014 : 0.012,
         transparent: true,
         opacity: 0.9,
+        depthTest: false,
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         sizeAttenuation: true,
@@ -681,14 +711,21 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       const material = organMaterials.get(organId);
       if (!material) return;
       material.color.set(state.color);
-      material.opacity = state.opacity;
+      // State pages want to see the particle field through the organ; a little
+      // extra transparency also keeps the neighbouring organs from blocking it.
+      material.opacity = Math.min(state.opacity, 0.5);
       material.roughness = state.roughness ?? 0.55;
-      material.transparent = state.opacity < 1;
-      material.depthWrite = state.opacity > 0.4;
+      material.transparent = true;
+      material.depthTest = false;
+      material.depthWrite = false;
       material.emissive.set(state.color).multiplyScalar(0.35);
-      material.emissiveIntensity = 0.35;
+      material.emissiveIntensity = state.glow ?? 0.35;
       material.needsUpdate = true;
-      organGroups.get(organId)?.scale.setScalar(state.scale);
+      const group = organGroups.get(organId);
+      group?.scale.setScalar(state.scale);
+      group?.children.forEach(child => {
+        child.renderOrder = 5;
+      });
     };
 
     const updateOrganFx = (now: number) => {
@@ -738,15 +775,21 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       clearOrganFx();
       for (const [organId, material] of organMaterials) {
         const base = ORGAN_BY_ID[organId]?.color ?? '#c9a86a';
+        const baseOpacity = ORGAN_OPACITY[organId] ?? 0.9;
         material.color.set(base);
-        material.opacity = 0.95;
+        material.opacity = baseOpacity;
         material.roughness = 0.45;
         material.transparent = true;
-        material.depthWrite = true;
+        material.depthTest = true;
+        material.depthWrite = baseOpacity > 0.7;
         material.emissive.set(base).multiplyScalar(0.22);
         material.emissiveIntensity = 0.22;
         material.needsUpdate = true;
-        organGroups.get(organId)?.scale.setScalar(1);
+        const group = organGroups.get(organId);
+        group?.scale.setScalar(1);
+        group?.children.forEach(child => {
+          child.renderOrder = 1;
+        });
       }
       for (const [organId, state] of Object.entries(visuals)) {
         styleOrgan(organId, state);
@@ -763,11 +806,15 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       const systemBatches = new Map<SystemId, THREE.BufferGeometry[]>();
       for (const part of atlas.parts) {
         if (part.chunk !== index) continue;
+        const organId = partToOrgan.get(part.id);
+        const entry = organId ? organIndex.get(organId) : undefined;
+        const sourcePositions = new Float32Array(buffer, part.positions, part.vertexCount * 3);
+        // Geometry.translate() mutates the position array in place. Organ parts
+        // are re-centered, so copy the view first; otherwise the cached chunk
+        // buffer is shifted again on every viewer mount.
+        const positions = organId && entry ? sourcePositions.slice() : sourcePositions;
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute(
-          'position',
-          new THREE.BufferAttribute(new Float32Array(buffer, part.positions, part.vertexCount * 3), 3),
-        );
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setAttribute(
           'normal',
           new THREE.BufferAttribute(new Int16Array(buffer, part.normals, part.vertexCount * 3), 3, true),
@@ -775,8 +822,6 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         geometry.setIndex(
           new THREE.BufferAttribute(new Uint32Array(buffer, part.indices, part.indexCount), 1),
         );
-        const organId = partToOrgan.get(part.id);
-        const entry = organId ? organIndex.get(organId) : undefined;
         if (organId && entry) {
           geometry.translate(-entry.center.x, -entry.center.y, -entry.center.z);
           const list = organBatches.get(organId) ?? [];
@@ -991,12 +1036,12 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         markerGroup.add(sprite);
 
         const label = document.createElement('div');
-        label.className = `body-label lesion-label ${lesion.severity === '主要' ? 'is-main' : ''}`;
-        label.innerHTML = `<span class="body-label-no">${lesion.severity === '主要' ? '●' : '○'}</span>${lesion.label}`;
+        label.className = `body-label lesion-marker ${lesion.severity === '主要' ? 'is-main' : ''}`;
+        label.innerHTML = `<span class="body-label-no">${lesionIndex + 1}</span>`;
         const labelObject = new CSS2DObject(label);
         labelObject.position
           .copy(anchor.point)
-          .add(new THREE.Vector3(0.08 + lesionIndex * 0.03, 0.08 + lesionIndex * 0.11, 0));
+          .add(new THREE.Vector3(0.04 + lesionIndex * 0.02, 0.05 + lesionIndex * 0.04, 0));
         labelGroup.add(labelObject);
       }
 
@@ -1018,6 +1063,38 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
           labelObject.position.copy(anchor.point).add(new THREE.Vector3(0.06, 0.08, 0));
           labelGroup.add(labelObject);
         }
+      }
+    };
+
+    const updateLesionLines = () => {
+      const lesionsNow = propsRef.current.lesions;
+      if (!lesionsNow.length) return;
+      const width = host.clientWidth || 1;
+      const height = host.clientHeight || 1;
+      const panelWidth = width < 520 ? 152 : 210;
+      for (let index = 0; index < lesionsNow.length; index += 1) {
+        const lesion = lesionsNow[index];
+        const line = lesionLineRefs.current[lesion.id];
+        if (!line) continue;
+        const anchor = currentAnchors.find(item => item.id === lesion.organId);
+        if (!anchor) {
+          line.style.opacity = '0';
+          continue;
+        }
+        const projected = anchor.point.clone().project(camera);
+        if (projected.z > 1) {
+          line.style.opacity = '0';
+          continue;
+        }
+        const x1 = ((projected.x + 1) / 2) * width;
+        const y1 = ((1 - projected.y) / 2) * height;
+        const x2 = Math.max(24, width - panelWidth - 24);
+        const y2 = 60 + index * 50 + 22;
+        line.setAttribute('x1', x1.toFixed(1));
+        line.setAttribute('y1', y1.toFixed(1));
+        line.setAttribute('x2', x2.toFixed(1));
+        line.setAttribute('y2', y2.toFixed(1));
+        line.style.opacity = '1';
       }
     };
 
@@ -1062,7 +1139,10 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         -((event.clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
-      const visibleMeshes = [...systemGroups.values()].filter(group => group.visible);
+      const visibleMeshes = [
+        ...[...systemGroups.values()].filter(group => group.visible),
+        ...[...organGroups.values()].filter(group => group.visible),
+      ];
       const hits = raycaster.intersectObjects(visibleMeshes, true);
       if (!hits.length) return;
       hitPoint.copy(hits[0].point);
@@ -1107,7 +1187,16 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
 
       for (const [system, group] of systemGroups) {
         const bodyClipped = system === 'integumentary' && current.clip > 0.06;
-        group.visible = current.visibleSystems.includes(system) && !bodyClipped;
+        const contextSystem = system === 'integumentary' || system === 'skeletal';
+        const isolatedOut = current.isolateOrgans && !contextSystem;
+        group.visible = current.visibleSystems.includes(system) && !bodyClipped && !isolatedOut;
+      }
+      for (const [organId, group] of organGroups) {
+        const meta = ORGAN_BY_ID[organId];
+        const system = meta?.system as SystemId | undefined;
+        const systemVisible = system ? current.visibleSystems.includes(system) : true;
+        const organAllowed = !current.visibleOrgans || current.visibleOrgans.includes(organId);
+        group.visible = systemVisible && organAllowed;
       }
       const skeletalMaterial = materials.get('skeletal') as THREE.MeshStandardMaterial | undefined;
       if (skeletalMaterial) {
@@ -1195,6 +1284,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       }
 
       controls.update();
+      updateLesionLines();
       renderer.render(scene, camera);
       labelRenderer.render(scene, camera);
       rebuildMarkers();
@@ -1346,6 +1436,41 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
           <button className="viewer-btn" onClick={() => apiRef.current?.panDown()} aria-label="向下移动">
             <ChevronDown size={14} />
           </button>
+        </div>
+      )}
+      {lesions.length > 0 && (
+        <div className="lesion-overlay">
+          <svg className="lesion-line-layer" aria-hidden="true">
+            {lesions.map(lesion => (
+              <line
+                key={lesion.id}
+                ref={line => {
+                  lesionLineRefs.current[lesion.id] = line;
+                }}
+                className={lesion.severity === '主要' ? 'major' : ''}
+              />
+            ))}
+          </svg>
+          <div className="lesion-cause-panel">
+            <div className="lesion-cause-head">
+              <span>病因 / CAUSE</span>
+              <small>连线为理论映射</small>
+            </div>
+            {lesions.map((lesion, index) => {
+              const organ = ORGAN_BY_ID[lesion.organId];
+              return (
+                <div className="lesion-cause-item" key={lesion.id}>
+                  <span className={`lesion-cause-index ${lesion.severity === '主要' ? 'major' : ''}`}>
+                    {index + 1}
+                  </span>
+                  <div>
+                    <b>{lesion.label}</b>
+                    <small>{organ?.label ?? lesion.organId} · {lesion.severity}</small>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       <div className="viewer-corner viewer-corner-left">

@@ -660,6 +660,68 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
 .body-label-no { color: var(--gold); font-size: 7px; }
 .lesion-label { color: #e3c9c2; border-color: rgba(200, 71, 47, 0.32); }
 .lesion-label.is-main { color: #f0b5a8; border-color: rgba(200, 71, 47, 0.48); background: rgba(58, 16, 10, 0.7); }
+.lesion-marker { padding: 1px 5px; border-radius: 99px; color: var(--gold-2); }
+.lesion-marker.is-main { color: #f0b5a8; border-color: rgba(200, 71, 47, 0.48); background: rgba(58, 16, 10, 0.78); }
+.lesion-marker .body-label-no { font-size: 8px; }
+.lesion-overlay { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
+.lesion-line-layer { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.lesion-line-layer line {
+  stroke: rgba(201, 168, 106, 0.55);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  vector-effect: non-scaling-stroke;
+}
+.lesion-line-layer line.major { stroke: rgba(200, 71, 47, 0.8); }
+.lesion-cause-panel {
+  position: absolute;
+  top: 54px;
+  right: 12px;
+  width: 210px;
+  padding: 9px 10px;
+  border: 1px solid rgba(201, 168, 106, 0.3);
+  border-radius: 8px;
+  background: rgba(5, 7, 10, 0.86);
+  color: var(--text);
+  box-shadow: 0 16px 36px -28px #000;
+  backdrop-filter: blur(8px);
+}
+.lesion-cause-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(233, 227, 214, 0.1);
+}
+.lesion-cause-head span { color: var(--gold); font-size: 8px; letter-spacing: 0.12em; }
+.lesion-cause-head small { color: var(--faint); font-size: 7px; }
+.lesion-cause-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(233, 227, 214, 0.07);
+}
+.lesion-cause-item:last-child { border-bottom: 0; }
+.lesion-cause-index {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(201, 168, 106, 0.4);
+  border-radius: 50%;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 8px;
+}
+.lesion-cause-index.major { color: #e0a08f; border-color: rgba(200, 71, 47, 0.5); }
+.lesion-cause-item b { display: block; color: var(--text); font-size: 9px; font-weight: 500; }
+.lesion-cause-item small { color: var(--faint); font-size: 7.5px; }
+@media (max-width: 680px) {
+  .lesion-cause-panel { width: 160px; padding: 7px 8px; }
+  .lesion-cause-head small { display: none; }
+}
 .selected-organ-label { flex-direction: column; gap: 0; align-items: flex-start; }
 .viewer-corner { position: absolute; bottom: 10px; z-index: 5; display: flex; align-items: center; gap: 5px; color: #48545a; font-size: 7.5px; letter-spacing: 0.05em; pointer-events: none; }
 .viewer-corner-left { left: 12px; }

@@ -1,10 +1,12 @@
-import { useMemo, useRef, useState } from 'react';
-import { ArrowRight, Layers3, Minus, Plus, RotateCcw, Scissors, SlidersHorizontal } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Info, Layers3, Minus, Plus, RotateCcw, Scissors, SlidersHorizontal } from 'lucide-react';
 import { HumanBodyCanvas, type BodyViewerHandle } from '../anatomy/HumanBodyCanvas';
 import type { SystemId } from '../anatomy/atlas';
 import { LAYER_GROUPS } from '../anatomy/labels';
 import { ORGAN_META, ORGAN_BY_ID } from '../data';
+import { resolvePatternVisual } from '../data/patternVisuals';
 import { go } from '../navigation';
+import { usePrimaryPattern } from '../store';
 
 const STOMACH_LAYERS = [
   { id: 'mucosa', name: '黏膜层', color: '#c98b7a', note: '胃腑最内层，直接接触水谷；中医以“胃气”概括受纳腐熟。' },
@@ -15,19 +17,31 @@ const STOMACH_LAYERS = [
 
 export default function InsidePage() {
   const viewer = useRef<BodyViewerHandle>(null);
+  const pattern = usePrimaryPattern();
+  const visual = useMemo(() => resolvePatternVisual(pattern), [pattern]);
+  const affected = useMemo(() => Object.keys(visual.organs), [visual]);
+  const available = useMemo(
+    () => ORGAN_META.filter(organ => affected.includes(organ.id)),
+    [affected],
+  );
   const [clip, setClip] = useState(0);
-  const [selected, setSelected] = useState('stomach');
+  const [selected, setSelected] = useState(() => affected[0] ?? 'heart');
   const [layer, setLayer] = useState('mucosa');
   const [onlyOrgans, setOnlyOrgans] = useState(false);
-  const organ = ORGAN_BY_ID[selected] ?? ORGAN_BY_ID.stomach;
+  const organ = ORGAN_BY_ID[selected] ?? available[0] ?? ORGAN_BY_ID.heart;
 
-  const visible = useMemo<SystemId[]>(
-    () =>
-      onlyOrgans
-        ? ['cardiac', 'respiratory', 'digestive', 'urinary', 'lymphatic', 'endocrine', 'nervous']
-        : ['integumentary', 'skeletal', 'cardiac', 'respiratory', 'digestive', 'urinary', 'lymphatic', 'endocrine'],
-    [onlyOrgans],
-  );
+  useEffect(() => {
+    if (!visual.organs[selected]) setSelected(affected[0] ?? 'heart');
+  }, [affected, selected, visual]);
+
+  const visible = useMemo<SystemId[]>(() => {
+    const list: SystemId[] = onlyOrgans ? [] : ['integumentary', 'skeletal'];
+    for (const item of available) {
+      const system = item.system as SystemId;
+      if (!list.includes(system)) list.push(system);
+    }
+    return list;
+  }, [available, onlyOrgans]);
 
   return (
     <div className="inside-page">
@@ -50,6 +64,9 @@ export default function InsidePage() {
             visibleSystems={visible}
             selectedOrganId={selected}
             onSelectOrgan={setSelected}
+            organVisuals={visual.organs}
+            visibleOrgans={affected}
+            isolateOrgans
             clip={clip}
             focusOnSelect
           />
@@ -79,11 +96,14 @@ export default function InsidePage() {
               <div><span>经络</span><strong>{organ.meridian}</strong></div>
             </div>
             <div className="organ-pills">
-              {ORGAN_META.slice(0, 6).map(item => (
+              {available.map(item => (
                 <button key={item.id} className={selected === item.id ? 'active' : ''} onClick={() => setSelected(item.id)}>
                   {item.label}
                 </button>
               ))}
+            </div>
+            <div className="section-hint">
+              <Info size={13} /> 内部观察只保留主证候相关器官；剖面深度仍可调整。
             </div>
             <button className={`switch-row ${onlyOrgans ? 'on' : ''}`} onClick={() => setOnlyOrgans(value => !value)}>
               <span><Layers3 size={14} /> 只看脏腑</span>
@@ -91,31 +111,50 @@ export default function InsidePage() {
             </button>
           </section>
 
-          <section className="panel side-panel stomach-panel">
-            <div className="panel-head">
-              <div>
-                <span className="panel-kicker">STOMACH WALL / 胃壁</span>
-                <h3>四层结构 · 示意</h3>
+          {affected.includes('stomach') ? (
+            <section className="panel side-panel stomach-panel">
+              <div className="panel-head">
+                <div>
+                  <span className="panel-kicker">STOMACH WALL / 胃壁</span>
+                  <h3>四层结构 · 示意</h3>
+                </div>
+                <span className="mini-badge">非真实网格</span>
               </div>
-              <span className="mini-badge">非真实网格</span>
-            </div>
-            <div className="stomach-stack">
-              {STOMACH_LAYERS.map(item => (
-                <button
-                  key={item.id}
-                  className={`stomach-layer ${layer === item.id ? 'active' : ''}`}
-                  onClick={() => setLayer(item.id)}
-                  style={{ '--layer-color': item.color } as React.CSSProperties}
-                >
-                  <span className="stomach-color" />
-                  <span className="stomach-name">{item.name}</span>
-                  <span className="stomach-line" />
-                </button>
-              ))}
-            </div>
-            <p className="stomach-note">{STOMACH_LAYERS.find(item => item.id === layer)?.note}</p>
-            <div className="section-hint"><SlidersHorizontal size={13} /> 真实胃壁分层需要专用网格；当前用色带与剖面辅助理解。</div>
-          </section>
+              <div className="stomach-stack">
+                {STOMACH_LAYERS.map(item => (
+                  <button
+                    key={item.id}
+                    className={`stomach-layer ${layer === item.id ? 'active' : ''}`}
+                    onClick={() => setLayer(item.id)}
+                    style={{ '--layer-color': item.color } as React.CSSProperties}
+                  >
+                    <span className="stomach-color" />
+                    <span className="stomach-name">{item.name}</span>
+                    <span className="stomach-line" />
+                  </button>
+                ))}
+              </div>
+              <p className="stomach-note">{STOMACH_LAYERS.find(item => item.id === layer)?.note}</p>
+              <div className="section-hint"><SlidersHorizontal size={13} /> 真实胃壁分层需要专用网格；当前用色带与剖面辅助理解。</div>
+            </section>
+          ) : (
+            <section className="panel side-panel">
+              <div className="panel-head">
+                <div>
+                  <span className="panel-kicker">PATTERN / 主证候</span>
+                  <h3>{pattern?.name ?? '当前证型'}</h3>
+                </div>
+                <Info size={15} className="muted-icon" />
+              </div>
+              <p className="side-lede">{visual.note}</p>
+              <div className="tag-row compact">
+                {available.map(item => (
+                  <span className="tag static" key={item.id}>{item.label} · {item.tcmOrgan}</span>
+                ))}
+              </div>
+              <div className="section-hint"><SlidersHorizontal size={13} /> 器官明暗按证型规则表示功能状态；剖面深度保持不变。</div>
+            </section>
+          )}
 
           <section className="panel side-panel">
             <div className="panel-head"><div><span className="panel-kicker">LAYERS</span><h3>图层快捷键</h3></div></div>
