@@ -14,7 +14,7 @@ import type { Atlas, Part, SystemId } from './atlas';
 import { SYSTEM_LABELS } from './labels';
 import { decodeModelResponse } from './model-download';
 import { ORGAN_BY_ID, ORGAN_META } from '../data';
-import type { Lesion } from '../types';
+import type { Lesion, OrganMeta } from '../types';
 
 export interface BodyViewerHandle {
   zoomIn: () => void;
@@ -209,6 +209,20 @@ function makeGlowTexture() {
   return texture;
 }
 
+function organElementIds(atlas: Atlas, meta: OrganMeta) {
+  const elementIds = new Set<string>();
+  for (const concept of atlas.concepts) {
+    if (
+      meta.concepts.some(
+        name => name.toLowerCase() === concept.name.toLowerCase(),
+      )
+    ) {
+      concept.elements.forEach(id => elementIds.add(id));
+    }
+  }
+  return elementIds;
+}
+
 function buildOrganAnchors(atlas: Atlas) {
   const anchors: Array<{
     id: string;
@@ -219,16 +233,7 @@ function buildOrganAnchors(atlas: Atlas) {
   }> = [];
 
   for (const meta of ORGAN_META) {
-    const elementIds = new Set<string>();
-    for (const concept of atlas.concepts) {
-      if (
-        meta.concepts.some(
-          name => name.toLowerCase() === concept.name.toLowerCase(),
-        )
-      ) {
-        concept.elements.forEach(id => elementIds.add(id));
-      }
-    }
+    const elementIds = organElementIds(atlas, meta);
     const boxes: THREE.Box3[] = [];
     for (const part of atlas.parts) {
       if (!elementIds.has(part.id)) continue;
@@ -250,6 +255,40 @@ function buildOrganAnchors(atlas: Atlas) {
     });
   }
   return anchors;
+}
+
+interface OrganIndexEntry {
+  meta: OrganMeta;
+  center: THREE.Vector3;
+  radius: number;
+  partIds: Set<string>;
+}
+
+function buildOrganIndex(atlas: Atlas) {
+  const index = new Map<string, OrganIndexEntry>();
+  for (const meta of ORGAN_META) {
+    const partIds = organElementIds(atlas, meta);
+    const boxes: THREE.Box3[] = [];
+    for (const part of atlas.parts) {
+      if (!partIds.has(part.id)) continue;
+      boxes.push(
+        new THREE.Box3(
+          new THREE.Vector3().fromArray(part.bounds[0]),
+          new THREE.Vector3().fromArray(part.bounds[1]),
+        ),
+      );
+    }
+    if (!boxes.length) continue;
+    const box = boxes.reduce((acc, next) => acc.union(next), boxes[0].clone());
+    const size = box.getSize(new THREE.Vector3());
+    index.set(meta.id, {
+      meta,
+      center: box.getCenter(new THREE.Vector3()),
+      radius: Math.max(0.04, Math.min(0.24, size.length() / 2)),
+      partIds,
+    });
+  }
+  return index;
 }
 
 function makeParticles(count: number, color: string, spread: number) {
@@ -423,12 +462,28 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     const clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 10);
     const systemGroups = new Map<SystemId, THREE.Group>();
     const materials = new Map<SystemId, THREE.Material>();
+    const organGroups = new Map<string, THREE.Group>();
+    const organMaterials = new Map<string, THREE.MeshStandardMaterial>();
+    const organIndex = new Map<string, OrganIndexEntry>();
+    const partToOrgan = new Map<string, string>();
+    const organLoaded = new Set<string>();
     const organAnchors: ReturnType<typeof buildOrganAnchors> = [];
     const controller = new AbortController();
     const markerGroup = new THREE.Group();
     scene.add(markerGroup);
     const labelGroup = new THREE.Group();
     scene.add(labelGroup);
+
+    const getSystemGroup = (system: SystemId) => {
+      let group = systemGroups.get(system);
+      if (!group) {
+        group = new THREE.Group();
+        group.name = `system-${system}`;
+        scene.add(group);
+        systemGroups.set(system, group);
+      }
+      return group;
+    };
 
     const getSystemMaterial = (system: SystemId) => {
       const existing = materials.get(system);
@@ -452,10 +507,46 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       return material;
     };
 
-    // Add one anatomy chunk as a set of per-system meshes. Keeping chunk
-    // batches separate lets later chunks append without rebuilding the scene.
+    const getOrganMaterial = (organId: string) => {
+      const existing = organMaterials.get(organId);
+      if (existing) return existing;
+      const meta = ORGAN_BY_ID[organId];
+      const base = meta?.color ?? '#c9a86a';
+      const material = new THREE.MeshStandardMaterial({
+        color: base,
+        roughness: 0.45,
+        metalness: 0.05,
+        emissive: new THREE.Color(base).multiplyScalar(0.22),
+        emissiveIntensity: 0.22,
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide,
+        depthWrite: true,
+      });
+      organMaterials.set(organId, material);
+      return material;
+    };
+
+    const getOrganGroup = (organId: string) => {
+      const entry = organIndex.get(organId);
+      if (!entry) return null;
+      let group = organGroups.get(organId);
+      if (!group) {
+        group = new THREE.Group();
+        group.name = `organ-${organId}`;
+        group.position.copy(entry.center);
+        getSystemGroup(entry.meta.system as SystemId).add(group);
+        organGroups.set(organId, group);
+      }
+      return group;
+    };
+
+    // Add one anatomy chunk as organ batches plus the remaining system parts.
+    // Organs are re-centered around their own pivot so state visuals can scale
+    // them without moving them away from their anatomical position.
     const addChunk = (index: number, buffer: ArrayBuffer) => {
-      const batches = new Map<SystemId, THREE.BufferGeometry[]>();
+      const organBatches = new Map<string, THREE.BufferGeometry[]>();
+      const systemBatches = new Map<SystemId, THREE.BufferGeometry[]>();
       for (const part of atlas.parts) {
         if (part.chunk !== index) continue;
         const geometry = new THREE.BufferGeometry();
@@ -470,11 +561,33 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         geometry.setIndex(
           new THREE.BufferAttribute(new Uint32Array(buffer, part.indices, part.indexCount), 1),
         );
-        const list = batches.get(part.system as SystemId) ?? [];
-        list.push(geometry);
-        batches.set(part.system as SystemId, list);
+        const organId = partToOrgan.get(part.id);
+        const entry = organId ? organIndex.get(organId) : undefined;
+        if (organId && entry) {
+          geometry.translate(-entry.center.x, -entry.center.y, -entry.center.z);
+          const list = organBatches.get(organId) ?? [];
+          list.push(geometry);
+          organBatches.set(organId, list);
+        } else {
+          const list = systemBatches.get(part.system as SystemId) ?? [];
+          list.push(geometry);
+          systemBatches.set(part.system as SystemId, list);
+        }
       }
-      for (const [system, geometries] of batches) {
+      for (const [organId, geometries] of organBatches) {
+        const merged = mergeGeometries(geometries, false);
+        geometries.forEach(geometry => geometry.dispose());
+        if (!merged) continue;
+        merged.computeBoundingSphere();
+        const mesh = new THREE.Mesh(merged, getOrganMaterial(organId));
+        mesh.frustumCulled = false;
+        mesh.renderOrder = 1;
+        const group = getOrganGroup(organId);
+        if (!group) continue;
+        group.add(mesh);
+        organLoaded.add(organId);
+      }
+      for (const [system, geometries] of systemBatches) {
         const merged = mergeGeometries(geometries, false);
         geometries.forEach(geometry => geometry.dispose());
         if (!merged) continue;
@@ -482,14 +595,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         const mesh = new THREE.Mesh(merged, getSystemMaterial(system));
         mesh.frustumCulled = false;
         mesh.renderOrder = system === 'integumentary' ? 2 : 1;
-        let group = systemGroups.get(system);
-        if (!group) {
-          group = new THREE.Group();
-          group.name = `system-${system}`;
-          scene.add(group);
-          systemGroups.set(system, group);
-        }
-        group.add(mesh);
+        getSystemGroup(system).add(mesh);
       }
     };
 
@@ -859,6 +965,17 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
           bodyCenterY = (bodyBox.min.y + bodyBox.max.y) / 2;
           bodyHeight = Math.max(size.y, 0.5);
           fitCamera();
+        }
+
+        organIndex.clear();
+        for (const [organId, entry] of buildOrganIndex(atlas)) {
+          organIndex.set(organId, entry);
+        }
+        partToOrgan.clear();
+        for (const [organId, entry] of organIndex) {
+          for (const partId of entry.partIds) {
+            if (!partToOrgan.has(partId)) partToOrgan.set(partId, organId);
+          }
         }
 
         currentAnchors = buildOrganAnchors(atlas);
