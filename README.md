@@ -23,6 +23,19 @@ npm run dev
 
 前端 `npm run dev` 会把 `/api` 代理到 `http://127.0.0.1:8787`。没有 Key 时前端保留演示分析，不会把 Key 暴露在浏览器。Key 曾公开暴露时应先撤销/轮换，且不要提交 `.env.local`。
 
+## 生产式本地运行
+
+```bash
+cd app
+npm run build
+cd ..
+node server/index.mjs
+```
+
+打开 `http://127.0.0.1:8787/`：同一个 Node 进程同时提供前端静态文件和 `/api/analyze`。
+
+Docker 构建和部署选项见 [server/DEPLOYMENT.md](<server/DEPLOYMENT.md>)。
+
 ## 当前实现
 
 - 十页闭环：工作台 → 四诊 → 分析 → 数字人体 → 内部观察 → 病位 → 状态 → 药方 → 时间模拟 → 报告。

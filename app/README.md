@@ -39,6 +39,17 @@ npm run dev
 
 Vite 会把 `/api` 代理到 `http://127.0.0.1:8787`。分析页点击「DeepSeek 分析」才会调用 API；没有 Key 或调用失败时保留当前演示分析，并显示可读错误。
 
+生产式本地运行：
+
+```bash
+cd app
+npm run build
+cd ..
+node server/index.mjs
+```
+
+打开 `http://127.0.0.1:8787/`。Docker 部署见 [DEPLOYMENT.md](<../server/DEPLOYMENT.md>)。
+
 - 服务端：`server/index.mjs`
 - 模型：`deepseek-flash`
 - 请求方式：JSON Output + 关闭 thinking

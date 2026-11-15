@@ -21,6 +21,18 @@ npm run dev
 
 Vite proxies `/api` to `http://127.0.0.1:8787`.
 
+## Production-style run
+
+```bash
+cd app
+npm run build
+cd ..
+node server/index.mjs
+```
+
+The server serves `app/dist` plus the API on one port. See
+[DEPLOYMENT.md](<DEPLOYMENT.md>) for the Docker image and deployment checklist.
+
 Without a key the server still starts; `/api/health` reports
 `configured: false`, and `/api/analyze` returns `CONFIG_MISSING`.
 
