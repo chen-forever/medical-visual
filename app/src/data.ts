@@ -150,10 +150,60 @@ export const SIMULATION: SimulationPoint[] = [
 
 export const ORGAN_META: OrganMeta[] = [
   {
+    id: 'stomach',
+    label: '胃',
+    system: 'digestive',
+    color: '#d8a39b',
+    meridian: '足阳明胃经',
+    tcmOrgan: '胃主受纳、腐熟',
+    description: '胃接受并初步消化食物。胃纳不和可见食欲不振、饭后腹胀，常与脾虚并见。',
+    concepts: ['stomach'],
+  },
+  {
+    id: 'gallbladder',
+    label: '胆',
+    system: 'digestive',
+    color: '#6f8f52',
+    meridian: '足少阳胆经',
+    tcmOrgan: '胆主决断、贮藏排泄胆汁',
+    description: '胆贮藏并排泄胆汁，参与水谷消化；中医又认为胆与情志决断相关。',
+    concepts: ['gallbladder'],
+  },
+  {
+    id: 'smallIntestine',
+    label: '小肠',
+    system: 'digestive',
+    color: '#d5a08f',
+    meridian: '手太阳小肠经',
+    tcmOrgan: '小肠受盛化物、泌别清浊',
+    description: '小肠承接胃中食糜，进一步消化并分别清浊，把水谷精微与食物残渣分开。',
+    concepts: ['small intestine'],
+  },
+  {
+    id: 'largeIntestine',
+    label: '大肠',
+    system: 'digestive',
+    color: '#c58d75',
+    meridian: '手阳明大肠经',
+    tcmOrgan: '大肠传导糟粕、吸收水分',
+    description: '大肠吸收食物残渣中的水分，形成粪便并排出体外；与肺相表里。',
+    concepts: ['large intestine'],
+  },
+  {
+    id: 'bladder',
+    label: '膀胱',
+    system: 'urinary',
+    color: '#d9c486',
+    meridian: '足太阳膀胱经',
+    tcmOrgan: '膀胱贮尿、排尿',
+    description: '膀胱贮存尿液并排出尿液；与肾相表里，水液代谢依赖肾的气化。',
+    concepts: ['urinary bladder'],
+  },
+  {
     id: 'heart',
     label: '心',
     system: 'cardiac',
-    color: '#c4473f',
+    color: '#b94b3f',
     meridian: '手少阴心经',
     tcmOrgan: '心主血脉、主神明',
     description: '心推动血液运行，又与精神意识活动相关。本案中心血不足、心神失养，是失眠的核心病位之一。',
@@ -163,7 +213,7 @@ export const ORGAN_META: OrganMeta[] = [
     id: 'lung',
     label: '肺',
     system: 'respiratory',
-    color: '#d79aa3',
+    color: '#d8a6aa',
     meridian: '手太阴肺经',
     tcmOrgan: '肺主气、司呼吸',
     description: '肺主一身之气，参与气的生成与宣发肃降。气虚时可见语声低微、气息偏弱。',
@@ -173,7 +223,7 @@ export const ORGAN_META: OrganMeta[] = [
     id: 'liver',
     label: '肝',
     system: 'digestive',
-    color: '#8a553a',
+    color: '#8d4d3d',
     meridian: '足厥阴肝经',
     tcmOrgan: '肝主疏泄、藏血',
     description: '肝调畅气机与情志。工作压力与情绪紧张时，肝郁可横逆犯脾，影响睡眠与食欲。',
@@ -183,55 +233,37 @@ export const ORGAN_META: OrganMeta[] = [
     id: 'spleen',
     label: '脾',
     system: 'lymphatic',
-    color: '#8a6f9e',
+    color: '#9c6d64',
     meridian: '足太阴脾经',
     tcmOrgan: '脾主运化、统血',
     description: '脾把水谷转化为气血。脾虚则纳差、便溏、乏力，气血生化不足又会加重心血亏虚。',
     concepts: ['spleen'],
   },
   {
-    id: 'stomach',
-    label: '胃',
-    system: 'digestive',
-    color: '#c99a5d',
-    meridian: '足阳明胃经',
-    tcmOrgan: '胃主受纳、腐熟',
-    description: '胃接受并初步消化食物。胃纳不和可见食欲不振、饭后腹胀，常与脾虚并见。',
-    concepts: ['stomach'],
-  },
-  {
     id: 'kidney',
     label: '肾',
     system: 'urinary',
-    color: '#a65a5a',
+    color: '#95564a',
     meridian: '足少阴肾经',
     tcmOrgan: '肾藏精、主水',
     description: '肾藏精，为先天之本。长期劳倦可累及肾精，但本案肾虚证据不突出，暂列观察。',
     concepts: ['right kidney', 'left kidney'],
   },
-  {
-    id: 'brain',
-    label: '脑',
-    system: 'nervous',
-    color: '#d8bd8a',
-    meridian: '督脉',
-    tcmOrgan: '脑为元神之府',
-    description: '脑与神志活动相关。中医常以心主神明统摄，脑为元神之府，二者在失眠解释中相互参照。',
-    concepts: ['brain'],
-  },
-  {
-    id: 'gallbladder',
-    label: '胆',
-    system: 'digestive',
-    color: '#6f8f5a',
-    meridian: '足少阳胆经',
-    tcmOrgan: '胆主决断',
-    description: '胆与情志决断、睡眠相关。本案无明显胆郁痰扰证据，作为鉴别观察。',
-    concepts: ['gallbladder'],
-  },
 ];
 
 export const ORGAN_BY_ID = Object.fromEntries(ORGAN_META.map(o => [o.id, o]));
+
+export const ORGAN_IDS = ORGAN_META.map(o => o.id);
+
+export const BASE_BODY_LAYERS: Array<{
+  id: 'integumentary' | 'skeletal' | 'muscular';
+  label: string;
+  note: string;
+}> = [
+  { id: 'integumentary', label: '体表', note: '半透明外壳' },
+  { id: 'skeletal', label: '骨骼', note: '骨架与保护' },
+  { id: 'muscular', label: '肌肉', note: '默认隐藏' },
+];
 
 export const STEPS: Array<{
   id: StepId;

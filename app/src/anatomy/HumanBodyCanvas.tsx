@@ -56,6 +56,31 @@ interface Props {
 const MODEL_BASE = '/models/human-atlas/';
 
 /**
+ * Fine positional alignment against the supplied TCM zang-fu reference:
+ * the heart sits a little lower, lungs slightly higher, liver/ gallbladder
+ * toward the anatomical right, kidneys posterior, and the bladder lower.
+ * Values are metres and deliberately small so the underlying atlas remains
+ * anatomically coherent.
+ */
+const ORGAN_POSE: Record<string, [number, number, number]> = {
+  stomach: [0.004, -0.014, 0.004],
+  gallbladder: [-0.006, -0.004, 0.006],
+  smallIntestine: [0.002, -0.008, 0.008],
+  largeIntestine: [0, -0.004, 0.002],
+  bladder: [0, -0.01, 0.004],
+  heart: [0.004, -0.035, 0.006],
+  lung: [0, 0.008, 0],
+  liver: [-0.014, 0.002, 0.004],
+  spleen: [0.004, -0.006, 0.002],
+  kidney: [0, -0.012, -0.012],
+};
+
+function organPose(organId: string): THREE.Vector3 {
+  const offset = ORGAN_POSE[organId];
+  return offset ? new THREE.Vector3(...offset) : new THREE.Vector3();
+}
+
+/**
  * Progressive loading: the body surface and the organs used by the default
  * view are assembled first, then the remaining anatomy chunks stream in.
  * The four core chunks total ~8.8 MB gzipped (vs ~33 MB for the whole atlas).
@@ -264,7 +289,7 @@ function buildOrganAnchors(atlas: Atlas) {
     anchors.push({
       id: meta.id,
       label: meta.label,
-      point: box.getCenter(new THREE.Vector3()),
+      point: box.getCenter(new THREE.Vector3()).add(organPose(meta.id)),
       system: meta.system as SystemId,
       color: meta.color,
     });
@@ -494,7 +519,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     const systemGroups = new Map<SystemId, THREE.Group>();
     const materials = new Map<SystemId, THREE.Material>();
     const organGroups = new Map<string, THREE.Group>();
-    const organMaterials = new Map<string, THREE.MeshStandardMaterial>();
+    const organMaterials = new Map<string, THREE.MeshPhysicalMaterial>();
     const organRoot = new THREE.Group();
     organRoot.name = 'organ-root';
     scene.add(organRoot);
@@ -519,17 +544,19 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       return group;
     };
 
-    // Stomach/spleen/intestine opacity is deliberately low so kidneys and the
-    // bladder remain readable from the default front view.
+    // Opacity is inherited from the previous organ pass. Do not make the
+    // reference organs more transparent just to fit the illustration.
     const ORGAN_OPACITY: Record<string, number> = {
+      stomach: 0.42,
+      gallbladder: 0.6,
+      smallIntestine: 0.6,
+      largeIntestine: 0.6,
+      bladder: 0.9,
       heart: 0.95,
       lung: 0.86,
       liver: 0.6,
       spleen: 0.42,
-      stomach: 0.42,
       kidney: 0.95,
-      brain: 0.9,
-      gallbladder: 0.6,
     };
 
     const getSystemMaterial = (system: SystemId) => {
@@ -560,12 +587,17 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       const meta = ORGAN_BY_ID[organId];
       const base = meta?.color ?? '#c9a86a';
       const opacity = ORGAN_OPACITY[organId] ?? 0.9;
-      const material = new THREE.MeshStandardMaterial({
+      const material = new THREE.MeshPhysicalMaterial({
         color: base,
-        roughness: 0.45,
-        metalness: 0.05,
-        emissive: new THREE.Color(base).multiplyScalar(0.22),
-        emissiveIntensity: 0.22,
+        roughness: 0.46,
+        metalness: 0.02,
+        clearcoat: 0.18,
+        clearcoatRoughness: 0.55,
+        sheen: 0.22,
+        sheenColor: new THREE.Color(base).lerp(new THREE.Color('#ffffff'), 0.32),
+        sheenRoughness: 0.7,
+        emissive: new THREE.Color(base).multiplyScalar(0.18),
+        emissiveIntensity: 0.26,
         transparent: true,
         opacity,
         side: THREE.DoubleSide,
@@ -582,7 +614,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       if (!group) {
         group = new THREE.Group();
         group.name = `organ-${organId}`;
-        group.position.copy(entry.center);
+        group.position.copy(entry.center).add(organPose(organId));
         organRoot.add(group);
         organGroups.set(organId, group);
       }
@@ -623,7 +655,10 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       const ids = Object.keys(activeOrganVisuals).filter(id => organLoaded.has(id));
       if (ids.length < 2) return;
       const points = ids
-        .map(id => organIndex.get(id)?.center)
+        .map(id => {
+          const center = organIndex.get(id)?.center;
+          return center ? center.clone().add(organPose(id)) : null;
+        })
         .filter((point): point is THREE.Vector3 => Boolean(point));
       if (points.length < 2) return;
       const material = new THREE.LineBasicMaterial({
@@ -644,6 +679,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       if (organFx.some(field => field.organId === organId)) return;
       const entry = organIndex.get(organId);
       if (!entry) return;
+      const anchor = entry.center.clone().add(organPose(organId));
       const count = Math.round(110 + state.particle.density * 260);
       const spread = Math.max(0.06, Math.min(0.14, entry.radius * 0.75));
       const positions = new Float32Array(count * 3);
@@ -657,9 +693,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         seed[i * 4 + 1] = radius;
         seed[i * 4 + 2] = y;
         seed[i * 4 + 3] = phase;
-        positions[i * 3] = entry.center.x + Math.cos(theta) * radius * spread;
-        positions[i * 3 + 1] = entry.center.y + y * spread;
-        positions[i * 3 + 2] = entry.center.z + Math.sin(theta) * radius * spread * 0.62;
+        positions[i * 3] = anchor.x + Math.cos(theta) * radius * spread;
+        positions[i * 3 + 1] = anchor.y + y * spread;
+        positions[i * 3 + 2] = anchor.z + Math.sin(theta) * radius * spread * 0.62;
       }
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -689,7 +725,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
           opacity: (state.halo ?? 0.3) * 0.58,
         }),
       );
-      halo.position.copy(entry.center);
+      halo.position.copy(anchor);
       const haloSize = Math.max(0.12, entry.radius * 1.25);
       halo.scale.set(haloSize, haloSize, 1);
       halo.renderOrder = 14;
@@ -702,7 +738,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         seed,
         count,
         spread,
-        anchor: entry.center.clone(),
+        anchor: anchor.clone(),
         state,
       });
     };
@@ -782,8 +818,8 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         material.transparent = true;
         material.depthTest = true;
         material.depthWrite = baseOpacity > 0.7;
-        material.emissive.set(base).multiplyScalar(0.22);
-        material.emissiveIntensity = 0.22;
+        material.emissive.set(base).multiplyScalar(0.18);
+        material.emissiveIntensity = 0.26;
         material.needsUpdate = true;
         const group = organGroups.get(organId);
         group?.scale.setScalar(1);
@@ -999,7 +1035,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       if (!currentAnchors.length) return;
       const current = propsRef.current;
       const lesionKey = current.lesions.map(l => `${l.id}:${l.organId}:${l.severity}`).join('|');
-      const labelId = current.selectedOrganId ?? '';
+      const labelId = `${current.selectedOrganId ?? ''}|${(current.visibleOrgans ?? []).join(',')}`;
       if (
         lesionKey === lastLesionKey &&
         labelId === lastLabelId &&
@@ -1046,7 +1082,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       }
 
       if (current.selectedOrganId && !current.lesions.length) {
-        const anchor = findAnchor(current.selectedOrganId);
+        const selectedVisible =
+          !current.visibleOrgans || current.visibleOrgans.includes(current.selectedOrganId);
+        const anchor = selectedVisible ? findAnchor(current.selectedOrganId) : undefined;
         if (anchor) {
           const state = current.organVisuals?.[current.selectedOrganId];
           selectionSprite.position.copy(anchor.point);
@@ -1192,11 +1230,10 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         group.visible = current.visibleSystems.includes(system) && !bodyClipped && !isolatedOut;
       }
       for (const [organId, group] of organGroups) {
-        const meta = ORGAN_BY_ID[organId];
-        const system = meta?.system as SystemId | undefined;
-        const systemVisible = system ? current.visibleSystems.includes(system) : true;
         const organAllowed = !current.visibleOrgans || current.visibleOrgans.includes(organId);
-        group.visible = systemVisible && organAllowed;
+        // Organ visibility is its own control surface now. System visibility is
+        // reserved for the base body, skeleton and muscle layers.
+        group.visible = organAllowed;
       }
       const skeletalMaterial = materials.get('skeletal') as THREE.MeshStandardMaterial | undefined;
       if (skeletalMaterial) {
@@ -1478,7 +1515,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         <span>{status}</span>
       </div>
       <div className="viewer-corner viewer-corner-right">
-        <span>{SYSTEM_LABELS[visibleSystems[0]] ?? '数字人体'}</span>
+        <span>{visibleOrgans?.length ? '五脏六腑' : SYSTEM_LABELS[visibleSystems[0]] ?? '数字人体'}</span>
         <span className="viewer-corner-sep">/</span>
         <span>BodyParts3D</span>
       </div>

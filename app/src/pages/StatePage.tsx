@@ -8,7 +8,7 @@ import { resolvePatternVisual } from '../data/patternVisuals';
 import { go } from '../navigation';
 import { useCaseStore, usePrimaryPattern } from '../store';
 
-const VISIBLE: SystemId[] = ['integumentary', 'skeletal', 'cardiac', 'respiratory', 'digestive', 'urinary', 'lymphatic', 'endocrine'];
+const VISIBLE: SystemId[] = ['integumentary', 'skeletal'];
 
 const PARTICLE_LABEL: Record<string, string> = {
   mist: '雾状微粒',

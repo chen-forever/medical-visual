@@ -2,12 +2,12 @@ import { useRef, useState } from 'react';
 import { ArrowRight, CircleAlert, MapPin, Plus, RotateCcw, ShieldAlert, Trash2 } from 'lucide-react';
 import { HumanBodyCanvas, type BodyViewerHandle } from '../anatomy/HumanBodyCanvas';
 import type { SystemId } from '../anatomy/atlas';
-import { ORGAN_META, ORGAN_BY_ID } from '../data';
+import { ORGAN_IDS, ORGAN_META, ORGAN_BY_ID } from '../data';
 import { go } from '../navigation';
 import { useCaseStore } from '../store';
 import type { Lesion } from '../types';
 
-const VISIBLE: SystemId[] = ['integumentary', 'skeletal', 'cardiac', 'respiratory', 'digestive', 'urinary', 'lymphatic', 'endocrine'];
+const VISIBLE: SystemId[] = ['integumentary', 'skeletal'];
 
 export default function LesionPage() {
   const viewer = useRef<BodyViewerHandle>(null);
@@ -60,6 +60,7 @@ export default function LesionPage() {
           <HumanBodyCanvas
             ref={viewer}
             visibleSystems={VISIBLE}
+            visibleOrgans={ORGAN_IDS}
             selectedOrganId={selected?.organId}
             onSelectOrgan={organId => {
               const existing = lesions.find(item => item.organId === organId);

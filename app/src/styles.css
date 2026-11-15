@@ -377,6 +377,8 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
 .legend-dot.organ { background: #c46b60; }
 .legend-dot.vessel { background: #b84a3e; }
 .legend-dot.nerve { background: var(--gold); }
+.legend-dot.muscle { background: #92564c; }
+.legend-dot.skeleton { background: #d7c7a4; }
 .legend-dot.red { background: var(--red); }
 .legend-dot.gold { background: var(--gold); }
 .legend-dot.teal { background: var(--teal); }
@@ -792,6 +794,19 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
 .layer-switch i { position: absolute; left: 2px; top: 2px; width: 9px; height: 9px; border-radius: 50%; background: #58656c; transition: 0.16s; }
 .layer-row.on .layer-switch { background: rgba(79, 179, 169, 0.25); }
 .layer-row.on .layer-switch i { left: 13px; background: var(--teal); }
+.layer-list.compact { margin-top: 4px; }
+.layer-section-label { margin-top: 11px; padding: 8px 4px 3px; color: var(--faint); font-size: 7.5px; letter-spacing: 0.1em; border-top: 1px solid var(--line); }
+.organ-label-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.organ-layer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 3px 0 0; }
+.organ-layer-item { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 5px 5px; border: 1px solid transparent; border-radius: 5px; color: var(--faint); text-align: left; font-size: 8.5px; }
+.organ-layer-item:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
+.organ-layer-item.on { color: var(--muted); }
+.organ-layer-dot { width: 5px; height: 5px; flex: none; border-radius: 50%; opacity: 0.72; }
+.organ-layer-item.on .organ-layer-dot { opacity: 1; box-shadow: 0 0 7px -1px currentColor; }
+.organ-layer-item .layer-switch { width: 20px; height: 11px; margin-left: auto; }
+.organ-layer-item .layer-switch i { left: 2px; top: 2px; width: 7px; height: 7px; }
+.organ-layer-item.on .layer-switch { background: rgba(79, 179, 169, 0.22); }
+.organ-layer-item.on .layer-switch i { left: 11px; background: var(--teal); }
 .layer-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 7px; padding: 9px 4px; border-top: 1px solid var(--line); color: #465258; font-size: 7.5px; }
 .layer-foot button { color: var(--faint); font-size: 7.5px; }
 .organ-index-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 10px; }

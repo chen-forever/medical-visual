@@ -32,6 +32,7 @@ npm run dev
 
 - [工作台](<previews/app-home.png>)
 - [数字人体](<previews/app-body.png>)
+- [五脏六腑器官布局](<previews/app-body-organ-layout.png>)
 - [时间模拟](<previews/app-timeline.png>)
 - [患者报告](<previews/app-report.png>)
 

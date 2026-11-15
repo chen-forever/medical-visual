@@ -2,31 +2,33 @@ import { useRef, useState } from 'react';
 import { ArrowRight, Eye, EyeOff, Info, Layers3, Lock, Maximize2, Minus, Plus, RotateCcw, ScanEye } from 'lucide-react';
 import { HumanBodyCanvas, type BodyViewerHandle } from '../anatomy/HumanBodyCanvas';
 import type { SystemId } from '../anatomy/atlas';
-import { LAYER_GROUPS, SYSTEM_LABELS } from '../anatomy/labels';
-import { ORGAN_META, ORGAN_BY_ID } from '../data';
+import { BASE_BODY_LAYERS, ORGAN_IDS, ORGAN_META, ORGAN_BY_ID } from '../data';
 import { go } from '../navigation';
 
-const DEFAULT_VISIBLE: SystemId[] = [
-  'integumentary',
-  'skeletal',
-  'cardiac',
-  'respiratory',
-  'digestive',
-  'urinary',
-  'lymphatic',
-  'endocrine',
-];
+const DEFAULT_BASE: SystemId[] = ['integumentary', 'skeletal'];
 
 export default function BodyPage() {
   const viewer = useRef<BodyViewerHandle>(null);
-  const [visible, setVisible] = useState<SystemId[]>(DEFAULT_VISIBLE);
+  const [visibleBase, setVisibleBase] = useState<SystemId[]>(DEFAULT_BASE);
+  const [visibleOrgans, setVisibleOrgans] = useState<string[]>([...ORGAN_IDS]);
   const [selected, setSelected] = useState('heart');
   const organ = ORGAN_BY_ID[selected] ?? ORGAN_META[0];
 
-  const toggle = (id: SystemId) => {
-    setVisible(current =>
+  const toggleBase = (id: SystemId) => {
+    setVisibleBase(current =>
       current.includes(id) ? current.filter(item => item !== id) : [...current, id],
     );
+  };
+
+  const toggleOrgan = (id: string) => {
+    setVisibleOrgans(current =>
+      current.includes(id) ? current.filter(item => item !== id) : [...current, id],
+    );
+  };
+
+  const resetLayers = () => {
+    setVisibleBase(DEFAULT_BASE);
+    setVisibleOrgans([...ORGAN_IDS]);
   };
 
   return (
@@ -48,16 +50,17 @@ export default function BodyPage() {
           </div>
           <HumanBodyCanvas
             ref={viewer}
-            visibleSystems={visible}
+            visibleSystems={visibleBase}
+            visibleOrgans={visibleOrgans}
             selectedOrganId={selected}
             onSelectOrgan={setSelected}
           />
           <div className="viewer-legend">
             <span><i className="legend-dot body" /> 体表</span>
-            <span><i className="legend-dot organ" /> 脏腑</span>
-            <span><i className="legend-dot vessel" /> 血脉</span>
-            <span><i className="legend-dot nerve" /> 神经</span>
-            <span className="viewer-legend-note">点击脏腑查看归属 · 滚轮缩放</span>
+            <span><i className="legend-dot organ" /> 五脏六腑</span>
+            <span><i className="legend-dot muscle" /> 肌肉</span>
+            <span><i className="legend-dot skeleton" /> 骨骼</span>
+            <span className="viewer-legend-note">点击器官查看归属 · 滚轮缩放 · 上下拖动</span>
           </div>
         </section>
 
@@ -89,11 +92,13 @@ export default function BodyPage() {
               </div>
               <Layers3 size={16} className="muted-icon" />
             </div>
-            <div className="layer-list">
-              {LAYER_GROUPS.map(layer => {
-                const on = visible.includes(layer.id);
+
+            <div className="layer-section-label">体表与支撑</div>
+            <div className="layer-list compact">
+              {BASE_BODY_LAYERS.map(layer => {
+                const on = visibleBase.includes(layer.id);
                 return (
-                  <button key={layer.id} className={`layer-row ${on ? 'on' : ''}`} onClick={() => toggle(layer.id)}>
+                  <button key={layer.id} className={`layer-row ${on ? 'on' : ''}`} onClick={() => toggleBase(layer.id)}>
                     <span className="layer-state">{on ? <Eye size={13} /> : <EyeOff size={13} />}</span>
                     <span className="layer-copy"><b>{layer.label}</b><small>{layer.note}</small></span>
                     <span className="layer-switch"><i /></span>
@@ -101,9 +106,32 @@ export default function BodyPage() {
                 );
               })}
             </div>
+
+            <div className="layer-section-label organ-label-row">
+              <span>五脏六腑</span>
+              <span>{visibleOrgans.length} / {ORGAN_META.length}</span>
+            </div>
+            <div className="organ-layer-grid">
+              {ORGAN_META.map(item => {
+                const on = visibleOrgans.includes(item.id);
+                return (
+                  <button
+                    key={item.id}
+                    className={`organ-layer-item ${on ? 'on' : ''}`}
+                    onClick={() => toggleOrgan(item.id)}
+                    title={on ? `隐藏${item.label}` : `显示${item.label}`}
+                  >
+                    <span className="organ-layer-dot" style={{ background: item.color }} />
+                    <span>{item.label}</span>
+                    <span className="layer-switch"><i /></span>
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="layer-foot">
-              <span>{visible.length} 个图层可见</span>
-              <button onClick={() => setVisible(DEFAULT_VISIBLE)}>恢复默认</button>
+              <span>{visibleOrgans.length} 个脏腑 · {visibleBase.length} 个基础层</span>
+              <button onClick={resetLayers}>恢复默认</button>
             </div>
           </section>
 
@@ -138,7 +166,7 @@ export default function BodyPage() {
         <div className="body-bottom-copy">
           <span className="panel-kicker">NEXT / 下一步</span>
           <strong>进入内部观察，看看病位与器官的关系。</strong>
-          <span>当前图层：{visible.map(item => SYSTEM_LABELS[item]).join(' · ')}</span>
+          <span>当前：{visibleOrgans.length} / {ORGAN_META.length} 个脏腑可见 · {visibleBase.length} 个基础层</span>
         </div>
         <div className="body-bottom-actions">
           <button className="btn btn-ghost" onClick={() => go('analysis')}>返回分析</button>

@@ -5,6 +5,7 @@ import {
   DEMO_FORMULA,
   DEMO_LESIONS,
   DEMO_PATIENT,
+  ORGAN_IDS,
   SIMULATION,
 } from './data';
 import type { AnalysisResult, Formula, Lesion, Patient, StepId } from './types';
@@ -59,7 +60,18 @@ export const useCaseStore = create<CaseStore>()(
     }),
     {
       name: 'qihuang-case-v1',
-      version: 1,
+      version: 2,
+      migrate: persisted => {
+        if (!persisted || typeof persisted !== 'object') return persisted;
+        const state = persisted as Partial<CaseStore>;
+        const allowed = new Set(ORGAN_IDS);
+        return {
+          ...state,
+          lesions: Array.isArray(state.lesions)
+            ? state.lesions.filter(lesion => allowed.has(lesion.organId))
+            : [],
+        };
+      },
       partialize: state => ({
         patient: state.patient,
         analysis: state.analysis,

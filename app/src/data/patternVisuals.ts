@@ -53,7 +53,9 @@ const ORGAN_ID_BY_TCM_LABEL: Record<string, string> = {
   肾: 'kidney',
   胃: 'stomach',
   胆: 'gallbladder',
-  脑: 'brain',
+  小肠: 'smallIntestine',
+  大肠: 'largeIntestine',
+  膀胱: 'bladder',
 };
 
 function organ(

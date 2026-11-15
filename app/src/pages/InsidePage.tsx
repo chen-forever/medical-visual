@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Info, Layers3, Minus, Plus, RotateCcw, Scissors, SlidersHorizontal } from 'lucide-react';
 import { HumanBodyCanvas, type BodyViewerHandle } from '../anatomy/HumanBodyCanvas';
 import type { SystemId } from '../anatomy/atlas';
-import { LAYER_GROUPS } from '../anatomy/labels';
 import { ORGAN_META, ORGAN_BY_ID } from '../data';
 import { resolvePatternVisual } from '../data/patternVisuals';
 import { go } from '../navigation';
@@ -34,14 +33,10 @@ export default function InsidePage() {
     if (!visual.organs[selected]) setSelected(affected[0] ?? 'heart');
   }, [affected, selected, visual]);
 
-  const visible = useMemo<SystemId[]>(() => {
-    const list: SystemId[] = onlyOrgans ? [] : ['integumentary', 'skeletal'];
-    for (const item of available) {
-      const system = item.system as SystemId;
-      if (!list.includes(system)) list.push(system);
-    }
-    return list;
-  }, [available, onlyOrgans]);
+  const visible = useMemo<SystemId[]>(
+    () => (onlyOrgans ? [] : ['integumentary', 'skeletal']),
+    [onlyOrgans],
+  );
 
   return (
     <div className="inside-page">
@@ -159,8 +154,8 @@ export default function InsidePage() {
           <section className="panel side-panel">
             <div className="panel-head"><div><span className="panel-kicker">LAYERS</span><h3>图层快捷键</h3></div></div>
             <div className="quick-layer-list">
-              {LAYER_GROUPS.slice(1, 7).map(item => (
-                <span key={item.id}><i />{item.label}</span>
+              {available.map(item => (
+                <span key={item.id}><i style={{ background: item.color }} />{item.label}</span>
               ))}
             </div>
           </section>
