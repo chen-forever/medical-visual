@@ -8,7 +8,7 @@
 - Git 分支：`main`
 - Git tag：`v0.1.0-plan-a`
 - 代码基线 commit：`0fc95e27c38ae04da68a2a667a86887d396b64ea`
-- 元数据 commit：`480ebec320930970a1509fe72f15fbd84e7f70f8`（即 tag `v0.1.0-plan-a` 指向的提交；用 `git rev-parse v0.1.0-plan-a^{commit}` 校验）
+- 元数据 commit：`git rev-parse v0.1.0-plan-a^{commit}`（以 tag 指向的提交为准）
 - 日期：2026-11-15
 - 工作目录：`C:\Users\陳.陈同学\Desktop\中医可视化`
 
