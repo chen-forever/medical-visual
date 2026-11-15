@@ -6,6 +6,7 @@ import {
   FlaskConical,
   Home,
   Layers3,
+  LogOut,
   MapPin,
   Menu,
   Orbit,
@@ -18,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { Seal } from './components/TcmOrnaments';
+import { logout } from './api/authClient';
 import { STEPS } from './data';
 import { useCaseStore } from './store';
 import type { StepId } from './types';
@@ -219,6 +221,18 @@ export default function App() {
             }}
           >
             <RotateCcw size={13} /> 重置演示病例
+          </button>
+          <button
+            className="sidebar-logout"
+            onClick={async () => {
+              try {
+                await logout();
+              } finally {
+                window.location.reload();
+              }
+            }}
+          >
+            <LogOut size={13} /> 退出登录
           </button>
         </div>
       </aside>

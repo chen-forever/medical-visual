@@ -96,7 +96,7 @@ export default function FormulaPage() {
       if (!activeCaseId) {
         const created = await createCase(patient);
         activeCaseId = created.id;
-        setCaseRef(created.id, created.version);
+        setCaseRef(created.id, created.version, created.lesionVersion);
       }
       await saveFormulaServer(activeCaseId, formula);
       setFormula(formula);

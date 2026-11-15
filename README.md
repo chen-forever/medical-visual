@@ -44,8 +44,9 @@ Docker 构建和部署选项见 [server/DEPLOYMENT.md](<server/DEPLOYMENT.md>)�
 - 半透明体表、骨骼/脏腑/血管/神经图层、病位标记、气机/湿象粒子、胃壁四层示意。
 - DeepSeek 证型分析（本地 BFF，JSON 校验、红旗规则、限流、失败兜底）。
 - 病例、分析运行、药方、报告快照保存到本地 SQLite；工作台有最近病例列表。
+- 单医生访问密码 + HttpOnly 会话；病例操作写入审计事件。
 - 报告为 A4 打印样式，浏览器打印/另存 PDF。
-- **当前 Backend Lite 没有登录/多用户权限，只适合本机试用，不要直接公开到公网。**
+- **单用户 Backend Lite：没有多用户 RBAC；医生密码在 `server/.env.local`，不要直接公开到公网。**
 
 ## 文档
 

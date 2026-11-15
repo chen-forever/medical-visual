@@ -1,8 +1,19 @@
 import { createServer } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { readFile, stat as statFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  SESSION_COOKIE,
+  authConfig,
+  clearSessionCookie,
+  createSessionToken,
+  parseCookies,
+  safeEqual,
+  sessionCookie,
+  verifySessionToken,
+} from './auth.mjs';
 import { analyzeWithDeepSeek } from './deepseek.mjs';
 import { getStore } from './db.mjs';
 import { HttpError } from './schema.mjs';
@@ -17,6 +28,11 @@ if (existsSync(envPath)) {
 }
 
 const store = getStore();
+const auth = authConfig();
+const sessionSecret = auth.secret || randomBytes(32).toString('hex');
+if (auth.required && !auth.secret) {
+  console.warn('[auth] SESSION_SECRET 未配置，重启后登录会话会失效。');
+}
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '127.0.0.1';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGIN || 'http://127.0.0.1:5173,http://localhost:5173')
@@ -28,7 +44,9 @@ const STATIC_DIR = process.env.STATIC_DIR
   : fileURLToPath(new URL('../app/dist', import.meta.url));
 const RATE_LIMIT = 6;
 const RATE_WINDOW_MS = 60_000;
+const LOGIN_RATE_LIMIT = 5;
 const buckets = new Map();
+const loginBuckets = new Map();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -62,15 +80,34 @@ function corsHeaders(origin) {
   return headers;
 }
 
-function sendJson(res, status, payload, origin) {
+function sendJson(res, status, payload, origin, extraHeaders = {}) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(body),
     'cache-control': 'no-store',
     ...corsHeaders(origin),
+    ...extraHeaders,
   });
   res.end(body);
+}
+
+function isAuthenticated(req) {
+  if (!auth.required) return true;
+  const cookies = parseCookies(req.headers.cookie ?? '');
+  return verifySessionToken(cookies[SESSION_COOKIE], sessionSecret);
+}
+
+function isLoginLimited(req) {
+  const key = clientKey(req);
+  const now = Date.now();
+  const current = loginBuckets.get(key);
+  if (!current || now - current.startedAt > RATE_WINDOW_MS) {
+    loginBuckets.set(key, { startedAt: now, count: 1 });
+    return false;
+  }
+  current.count += 1;
+  return current.count > LOGIN_RATE_LIMIT;
 }
 
 async function serveStatic(req, res, origin) {
@@ -170,6 +207,50 @@ async function handleAnalyze(res, origin, patient) {
 }
 
 async function handleApi(req, res, pathname, origin) {
+  if (req.method === 'GET' && pathname === '/api/auth/me') {
+    sendJson(
+      res,
+      200,
+      { authenticated: isAuthenticated(req), authRequired: auth.required },
+      origin,
+    );
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/auth/login') {
+    if (isLoginLimited(req)) {
+      throw new HttpError(429, 'LOGIN_RATE_LIMITED', '登录尝试过多，请稍后再试。');
+    }
+    const body = await readJson(req);
+    if (!auth.required) {
+      sendJson(res, 200, { authenticated: true, authRequired: false }, origin);
+      return true;
+    }
+    if (!safeEqual(body.password ?? '', auth.password)) {
+      throw new HttpError(401, 'INVALID_CREDENTIALS', '访问密码不正确。');
+    }
+    const token = createSessionToken(sessionSecret);
+    sendJson(
+      res,
+      200,
+      { authenticated: true, authRequired: true },
+      origin,
+      { 'set-cookie': sessionCookie(token, { secure: auth.secure }) },
+    );
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/auth/logout') {
+    sendJson(
+      res,
+      200,
+      { authenticated: false, authRequired: auth.required },
+      origin,
+      { 'set-cookie': clearSessionCookie({ secure: auth.secure }) },
+    );
+    return true;
+  }
+
   if (req.method === 'GET' && pathname === '/api/health') {
     sendJson(
       res,
@@ -180,10 +261,15 @@ async function handleApi(req, res, pathname, origin) {
         configured: Boolean(process.env.DEEPSEEK_API_KEY?.trim()),
         model: process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-flash',
         storage: 'sqlite',
+        authRequired: auth.required,
       },
       origin,
     );
     return true;
+  }
+
+  if (auth.required && !isAuthenticated(req)) {
+    throw new HttpError(401, 'AUTH_REQUIRED', '请先登录。');
   }
 
   if (req.method === 'GET' && pathname === '/api/cases') {
@@ -218,10 +304,22 @@ async function handleApi(req, res, pathname, origin) {
     }
   }
 
-  const caseActionMatch = pathname.match(/^\/api\/cases\/([^/]+)\/(analyze|analyses|formulas|reports)$/);
+  const caseActionMatch = pathname.match(/^\/api\/cases\/([^/]+)\/(analyze|analyses|formulas|reports|lesions|events)$/);
   if (caseActionMatch) {
     const id = decodeURIComponent(caseActionMatch[1]);
     const action = caseActionMatch[2];
+
+    if (action === 'events' && req.method === 'GET') {
+      sendJson(res, 200, { events: store.listEvents(id) }, origin);
+      return true;
+    }
+
+    if (action === 'lesions' && req.method === 'PATCH') {
+      const body = await readJson(req);
+      const updated = store.updateLesions(id, body.lesions, body.lesionVersion);
+      sendJson(res, 200, { case: updated }, origin);
+      return true;
+    }
 
     if (action === 'analyses' && req.method === 'GET') {
       sendJson(res, 200, { analyses: store.listAnalyses(id) }, origin);
@@ -332,6 +430,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const configured = Boolean(process.env.DEEPSEEK_API_KEY?.trim());
     console.log(`[server] http://${HOST}:${PORT}`);
     console.log(`[server] static ${existsSync(join(STATIC_DIR, 'index.html')) ? STATIC_DIR : '未找到（API-only）'}`);
+    console.log(`[server] Auth ${auth.required ? '已启用' : '未启用'}`);
     console.log(`[server] DeepSeek ${configured ? '已配置' : '未配置（健康检查会提示 configured:false）'}`);
   });
   const shutdown = () => server.close(() => process.exit(0));

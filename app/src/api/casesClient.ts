@@ -6,6 +6,7 @@ export interface ServerCase {
   patient: Patient;
   lesions: Lesion[];
   version: number;
+  lesionVersion: number;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -54,6 +55,14 @@ export interface CaseAnalyzeResponse extends AnalyzeResponse {
   caseId: string;
 }
 
+export interface CaseEvent {
+  id: number;
+  actor: string;
+  action: string;
+  detail: Record<string, unknown>;
+  createdAt: string;
+}
+
 async function request<T>(
   url: string,
   init: RequestInit = {},
@@ -80,6 +89,9 @@ async function request<T>(
     payload = null;
   }
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('qihuang:unauthorized'));
+    }
     throw new AnalysisApiError(
       payload?.error?.code ?? 'REQUEST_FAILED',
       payload?.error?.message ?? '请求失败，请稍后重试。',
@@ -114,6 +126,23 @@ export function updateCase(
 
 export function getCase(caseId: string) {
   return request<CaseDetail>(`/api/cases/${encodeURIComponent(caseId)}`);
+}
+
+export function updateLesions(
+  caseId: string,
+  lesions: Lesion[],
+  lesionVersion: number,
+) {
+  return request<{ case: ServerCase }>(`/api/cases/${encodeURIComponent(caseId)}/lesions`, {
+    method: 'PATCH',
+    body: JSON.stringify({ lesions, lesionVersion }),
+  }).then(payload => payload.case);
+}
+
+export function listEvents(caseId: string) {
+  return request<{ events: CaseEvent[] }>(
+    `/api/cases/${encodeURIComponent(caseId)}/events`,
+  ).then(payload => payload.events);
 }
 
 export function analyzeCaseById(caseId: string, signal?: AbortSignal) {

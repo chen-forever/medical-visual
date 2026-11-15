@@ -115,3 +115,21 @@ test('soft deletion hides a case', () => {
     error => error.code === 'CASE_NOT_FOUND',
   );
 });
+
+test('lesions are versioned and audited', () => {
+  const created = store.createCase({ patient });
+  const updated = store.updateLesions(created.id, [{
+    id: 'lesion-1',
+    organId: 'heart',
+    label: '心神失养',
+  }], created.lesionVersion);
+  assert.equal(updated.version, 1);
+  assert.equal(updated.lesionVersion, 2);
+  assert.equal(updated.lesions.length, 1);
+  assert.throws(
+    () => store.updateLesions(created.id, [], created.lesionVersion),
+    error => error.code === 'LESION_VERSION_CONFLICT',
+  );
+  const events = store.listEvents(created.id);
+  assert.ok(events.some(event => event.action === 'case.lesions_updated'));
+});

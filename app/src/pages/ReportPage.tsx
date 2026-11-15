@@ -1,12 +1,22 @@
-import { useState } from 'react';
-import { ArrowLeft, Check, Download, FileText, Printer, Save, ShieldCheck } from 'lucide-react';
-import { saveReport } from '../api/casesClient';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Check, Download, FileText, History, Printer, Save, ShieldCheck } from 'lucide-react';
+import { listEvents, saveReport, type CaseEvent } from '../api/casesClient';
 import { analysisErrorMessage } from '../api/analysisClient';
 import BodyGlyph from '../components/BodyGlyph';
 import { MeridianDivider, Seal } from '../components/TcmOrnaments';
 import { ORGAN_BY_ID, SIMULATION } from '../data';
 import { go } from '../navigation';
 import { useCaseStore, usePrimaryPattern } from '../store';
+
+const AUDIT_LABELS: Record<string, string> = {
+  'case.created': '创建病例',
+  'case.updated': '更新四诊信息',
+  'case.lesions_updated': '更新病位标记',
+  'case.deleted': '删除病例',
+  'analysis.saved': '保存证型分析',
+  'formula.saved': '保存药方',
+  'report.saved': '生成报告快照',
+};
 
 export default function ReportPage() {
   const patient = useCaseStore(state => state.patient);
@@ -18,9 +28,20 @@ export default function ReportPage() {
   const [saving, setSaving] = useState(false);
   const [savedReportId, setSavedReportId] = useState('');
   const [error, setError] = useState('');
+  const [events, setEvents] = useState<CaseEvent[]>([]);
+  const [auditError, setAuditError] = useState('');
   const now = new Date();
   const dateText = `${now.getFullYear()} 年 ${now.getMonth() + 1} 月 ${now.getDate()} 日`;
   const reportNo = `QH-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-038`;
+
+  useEffect(() => {
+    if (!caseId) return;
+    let cancelled = false;
+    listEvents(caseId)
+      .then(items => { if (!cancelled) setEvents(items.slice(0, 8)); })
+      .catch(caught => { if (!cancelled) setAuditError(analysisErrorMessage(caught)); });
+    return () => { cancelled = true; };
+  }, [caseId]);
 
   const saveSnapshot = async () => {
     if (!caseId) {
@@ -201,6 +222,31 @@ export default function ReportPage() {
         <FileText size={14} />
         <span>打印时请选择 A4、纵向、取消页眉页脚；深色屏幕预览会自动切换为白底报告。</span>
       </div>
+
+      {caseId && (
+        <section className="report-audit no-print">
+          <div className="panel-head">
+            <div>
+              <span className="panel-kicker">AUDIT / 服务端记录</span>
+              <h3><History size={14} /> 本病例操作记录</h3>
+            </div>
+          </div>
+          {auditError ? (
+            <p className="small-copy">{auditError}</p>
+          ) : events.length === 0 ? (
+            <p className="small-copy">暂无操作记录。</p>
+          ) : (
+            <div className="audit-list">
+              {events.map(event => (
+                <div key={event.id} className="audit-item">
+                  <span>{AUDIT_LABELS[event.action] ?? event.action}</span>
+                  <small>{event.actor === 'doctor' ? '医生' : event.actor} · {new Date(event.createdAt).toLocaleString('zh-CN')}</small>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

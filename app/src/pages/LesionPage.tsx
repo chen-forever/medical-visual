@@ -1,7 +1,9 @@
-import { useRef, useState } from 'react';
-import { ArrowRight, CircleAlert, MapPin, Plus, RotateCcw, ShieldAlert, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, ArrowRight, Check, CircleAlert, Loader2, MapPin, Plus, RotateCcw, ShieldAlert, Trash2 } from 'lucide-react';
 import { HumanBodyCanvas, type BodyViewerHandle } from '../anatomy/HumanBodyCanvas';
 import type { SystemId } from '../anatomy/atlas';
+import { getCase, updateLesions } from '../api/casesClient';
+import { analysisErrorMessage } from '../api/analysisClient';
 import { ORGAN_IDS, ORGAN_META, ORGAN_BY_ID } from '../data';
 import { go } from '../navigation';
 import { useCaseStore } from '../store';
@@ -12,13 +14,59 @@ const VISIBLE: SystemId[] = ['integumentary', 'skeletal'];
 export default function LesionPage() {
   const viewer = useRef<BodyViewerHandle>(null);
   const lesions = useCaseStore(state => state.lesions);
+  const caseId = useCaseStore(state => state.caseId);
+  const lesionVersion = useCaseStore(state => state.lesionVersion);
   const addLesion = useCaseStore(state => state.addLesion);
   const removeLesion = useCaseStore(state => state.removeLesion);
   const setLesions = useCaseStore(state => state.setLesions);
+  const setCaseRef = useCaseStore(state => state.setCaseRef);
+  const hydrateCase = useCaseStore(state => state.hydrateCase);
   const [selectedId, setSelectedId] = useState(lesions[0]?.id ?? '');
   const [adding, setAdding] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error' | 'no-case'>('idle');
+  const [saveError, setSaveError] = useState('');
   const selected = lesions.find(item => item.id === selectedId) ?? lesions[0];
   const selectedOrgan = selected ? ORGAN_BY_ID[selected.organId] : undefined;
+  const versionRef = useRef(lesionVersion);
+  const initialRef = useRef(true);
+  const timerRef = useRef<number | undefined>(undefined);
+  versionRef.current = lesionVersion;
+
+  useEffect(() => {
+    if (initialRef.current) {
+      initialRef.current = false;
+      return;
+    }
+    if (!caseId) {
+      setSaveState('no-case');
+      return;
+    }
+    setSaveState('saving');
+    setSaveError('');
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(async () => {
+      try {
+        const saved = await updateLesions(caseId, lesions, versionRef.current);
+        setCaseRef(saved.id, saved.version, saved.lesionVersion);
+        setSaveState('saved');
+      } catch (caught) {
+        setSaveState('error');
+        setSaveError(analysisErrorMessage(caught));
+      }
+    }, 650);
+    return () => window.clearTimeout(timerRef.current);
+  }, [lesions, caseId, setCaseRef]);
+
+  const reloadCase = async () => {
+    if (!caseId) return;
+    setSaveError('');
+    try {
+      hydrateCase(await getCase(caseId));
+      setSaveState('saved');
+    } catch (caught) {
+      setSaveError(analysisErrorMessage(caught));
+    }
+  };
 
   const add = (organId: string) => {
     const organ = ORGAN_BY_ID[organId];
@@ -43,6 +91,20 @@ export default function LesionPage() {
 
   return (
     <div className="lesion-page">
+      <div className={`lesion-save-bar ${saveState}`}>
+        {saveState === 'saving' && <><Loader2 size={13} className="spin" /> 正在保存病位…</>}
+        {saveState === 'saved' && <><Check size={13} /> 病位已保存到病例</>}
+        {saveState === 'no-case' && <><AlertCircle size={13} /> 先保存病例，病位才会进入服务端</>}
+        {saveState === 'error' && (
+          <>
+            <AlertCircle size={13} />
+            <span>{saveError}</span>
+            <button onClick={reloadCase}>重新载入病例</button>
+          </>
+        )}
+        {saveState === 'idle' && <><MapPin size={13} /> 修改病位后会自动保存</>}
+      </div>
+
       <div className="lesion-layout">
         <section className="viewer-panel lesion-viewer">
           <div className="viewer-toolbar">

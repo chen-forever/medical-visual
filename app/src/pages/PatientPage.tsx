@@ -52,7 +52,7 @@ export default function PatientPage() {
         ? await updateCase(caseId, form, caseVersion, useCaseStore.getState().lesions)
         : await createCase(form);
       setPatient(form);
-      setCaseRef(saved.id, saved.version);
+      setCaseRef(saved.id, saved.version, saved.lesionVersion);
       markAnalysisStale();
       markComplete('patient');
       go('analysis');

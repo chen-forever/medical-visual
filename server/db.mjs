@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS cases (
   lesions_json TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'active',
   version INTEGER NOT NULL DEFAULT 1,
+  lesion_version INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   deleted_at TEXT
@@ -100,6 +101,7 @@ function toCase(row) {
     },
     lesions: parseJson(row.lesions_json, []),
     version: row.version,
+    lesionVersion: row.lesion_version ?? 1,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -113,6 +115,10 @@ export function createStore(dbPath = process.env.DATABASE_PATH || DEFAULT_DB_PAT
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec('PRAGMA busy_timeout = 5000;');
   db.exec(SCHEMA);
+  const caseColumns = db.prepare('PRAGMA table_info(cases)').all();
+  if (!caseColumns.some(column => column.name === 'lesion_version')) {
+    db.exec('ALTER TABLE cases ADD COLUMN lesion_version INTEGER NOT NULL DEFAULT 1;');
+  }
   db.exec('PRAGMA user_version = 1;');
 
   const findCase = id =>
@@ -286,10 +292,19 @@ export function createStore(dbPath = process.env.DATABASE_PATH || DEFAULT_DB_PAT
     return toCase(findCase(id));
   };
 
-  const updateLesions = (id, lesions) => {
+  const updateLesions = (id, lesions, expectedLesionVersion) => {
     const existing = findCase(id);
     if (!existing) throw new HttpError(404, 'CASE_NOT_FOUND', '病例不存在。');
-    db.prepare('UPDATE cases SET lesions_json = ?, updated_at = ?, version = version + 1 WHERE id = ?').run(
+    if (
+      expectedLesionVersion !== undefined &&
+      Number(expectedLesionVersion) !== (existing.lesion_version ?? 1)
+    ) {
+      throw new HttpError(409, 'LESION_VERSION_CONFLICT', '病位已被其他窗口修改，请重新载入。');
+    }
+    db.prepare(`
+      UPDATE cases SET lesions_json = ?, lesion_version = COALESCE(lesion_version, 1) + 1, updated_at = ?
+      WHERE id = ?
+    `).run(
       JSON.stringify(Array.isArray(lesions) ? lesions : []),
       now(),
       id,
@@ -437,6 +452,21 @@ export function createStore(dbPath = process.env.DATABASE_PATH || DEFAULT_DB_PAT
     };
   };
 
+  const listEvents = (caseId, limit = 30) => {
+    const existing = findCase(caseId);
+    if (!existing) throw new HttpError(404, 'CASE_NOT_FOUND', '病例不存在。');
+    return db
+      .prepare('SELECT id, actor, action, detail_json, created_at FROM events WHERE case_id = ? ORDER BY id DESC LIMIT ?')
+      .all(caseId, Math.min(Math.max(Number(limit) || 30, 1), 100))
+      .map(row => ({
+        id: row.id,
+        actor: row.actor,
+        action: row.action,
+        detail: parseJson(row.detail_json, {}),
+        createdAt: row.created_at,
+      }));
+  };
+
   const close = () => db.close();
 
   return {
@@ -454,6 +484,7 @@ export function createStore(dbPath = process.env.DATABASE_PATH || DEFAULT_DB_PAT
     saveReport,
     listReports,
     getReport,
+    listEvents,
     recordEvent,
     close,
   };

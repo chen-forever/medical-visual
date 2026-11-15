@@ -103,7 +103,7 @@ export default function AnalysisPage() {
       if (!activeCaseId) {
         const created = await createCase(patient);
         activeCaseId = created.id;
-        setCaseRef(created.id, created.version);
+        setCaseRef(created.id, created.version, created.lesionVersion);
       }
       const result = await analyzeCaseById(activeCaseId, controller.signal);
       if (controller.signal.aborted) return;

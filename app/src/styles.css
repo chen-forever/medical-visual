@@ -191,6 +191,8 @@ svg { flex: none; }
 .sidebar-note svg { color: var(--gold); margin-top: 1px; }
 .sidebar-reset { display: flex; align-items: center; gap: 5px; margin-top: 12px; padding: 3px 0; font-size: 9px; color: #4f5b61; }
 .sidebar-reset:hover { color: var(--muted); }
+.sidebar-logout { display: flex; align-items: center; gap: 5px; margin-top: 8px; padding: 3px 0; font-size: 9px; color: var(--faint); }
+.sidebar-logout:hover { color: var(--muted); }
 .mobile-backdrop { display: none; }
 
 /* ---------- main / topbar ---------- */
@@ -677,6 +679,11 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
 
 /* ---------- 3d viewer ---------- */
 .body-page, .inside-page, .lesion-page, .state-page { display: flex; flex-direction: column; gap: 16px; }
+.lesion-save-bar { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--faint); font-size: 8.5px; }
+.lesion-save-bar.saved { color: var(--teal); border-color: rgba(63, 122, 106, 0.22); background: rgba(63, 122, 106, 0.04); }
+.lesion-save-bar.saving { color: var(--gold); }
+.lesion-save-bar.error { color: #a86155; border-color: rgba(200, 71, 47, 0.22); background: rgba(200, 71, 47, 0.04); }
+.lesion-save-bar button { margin-left: auto; color: var(--gold); text-decoration: underline; font-size: 8.5px; }
 .viewer-layout, .inside-layout, .lesion-layout, .state-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
 .viewer-panel {
   position: relative;
@@ -1128,6 +1135,11 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
 .report-actions > div { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
 .report-saved-note { display: flex; align-items: center; gap: 5px; color: var(--teal); font-size: 8.5px; }
 .report-saved-note svg { color: var(--teal); }
+.report-audit { margin-top: 4px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 10px; }
+.report-audit h3 { display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.audit-list { display: flex; flex-direction: column; gap: 1px; margin-top: 10px; }
+.audit-item { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; }
+.audit-item small { color: var(--faint); font-size: 8px; white-space: nowrap; }
 .report-paper {
   width: 100%;
   max-width: 900px;
@@ -1227,6 +1239,7 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
 .nav-item.active .nav-copy small { color: var(--gold); }
 .sidebar-foot { border-top-color: var(--line); }
 .sidebar-note, .sidebar-reset { color: var(--faint); }
+.sidebar-logout { color: var(--faint); }
 .topbar { background: rgba(250, 246, 236, 0.84); border-bottom-color: var(--line); }
 .breadcrumb { color: var(--faint); }
 .breadcrumb span:last-child { color: var(--muted); }
@@ -1586,9 +1599,61 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
   .sidebar { width: 280px; }
 }
 
+/* ---------- login ---------- */
+.login-screen {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 78% 18%, rgba(201, 168, 106, 0.16), transparent 30%),
+    radial-gradient(circle at 18% 82%, rgba(63, 122, 106, 0.10), transparent 34%),
+    var(--bg);
+}
+.login-ornament { position: absolute; border: 1px solid rgba(201, 168, 106, 0.13); border-radius: 50%; pointer-events: none; }
+.login-ornament-a { width: 520px; height: 520px; right: -180px; top: -220px; }
+.login-ornament-b { width: 320px; height: 320px; left: -150px; bottom: -160px; border-style: dashed; }
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: min(430px, 100%);
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 253, 247, 0.82);
+  box-shadow: 0 24px 80px rgba(58, 47, 31, 0.10);
+  backdrop-filter: blur(12px);
+}
+.login-brand { display: flex; align-items: center; gap: 9px; }
+.login-brand .brand-seal { width: 32px; height: 32px; font-size: 16px; }
+.login-brand div { display: flex; flex-direction: column; gap: 2px; }
+.login-brand strong { font-family: var(--serif); font-size: 15px; color: var(--gold-2); letter-spacing: 0.08em; }
+.login-brand span:not(.brand-seal) { color: var(--faint); font-size: 7px; letter-spacing: 0.18em; }
+.login-heading { margin-top: 30px; }
+.login-heading h1 { margin: 6px 0 8px; font-family: var(--serif); font-size: 30px; font-weight: 500; color: var(--text); letter-spacing: 0.02em; }
+.login-heading p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.75; }
+.login-form { margin-top: 24px; }
+.login-form .field span { display: block; margin-bottom: 6px; }
+.login-input-wrap { position: relative; display: flex; align-items: center; }
+.login-input-wrap svg { position: absolute; left: 11px; color: var(--gold); pointer-events: none; }
+.login-input-wrap input { padding-left: 34px; }
+.login-submit { width: 100%; justify-content: center; margin-top: 12px; }
+.login-loading, .login-offline { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 24px; padding: 16px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); font-size: 10px; line-height: 1.7; }
+.login-loading { flex-direction: row; align-items: center; }
+.login-offline p { margin: 0; }
+.login-foot { display: flex; align-items: center; gap: 5px; margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--faint); font-size: 8px; }
+.login-foot svg { color: var(--gold); }
+@media (max-width: 520px) {
+  .login-card { padding: 24px; }
+  .login-heading h1 { font-size: 25px; }
+}
+
 /* ---------- print ---------- */
 @page { size: A4 portrait; margin: 11mm; }
 @media print {
+  .no-print, .report-audit { display: none !important; }
   html, body { background: #fff !important; color: #111 !important; }
   body::before, body::after { display: none !important; }
   .sidebar, .topbar, .page-heading, .page-footer, .report-actions, .report-note { display: none !important; }

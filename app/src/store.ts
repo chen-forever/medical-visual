@@ -14,6 +14,7 @@ import type { CaseDetail } from './api/casesClient';
 interface CaseStore {
   caseId: string | null;
   caseVersion: number;
+  lesionVersion: number;
   patient: Patient;
   analysis: AnalysisResult;
   analysisMeta: AnalysisMeta;
@@ -31,7 +32,7 @@ interface CaseStore {
   removeLesion: (id: string) => void;
   setFormula: (formula: Formula) => void;
   setHorizon: (horizon: 7 | 14 | 30) => void;
-  setCaseRef: (caseId: string, version: number) => void;
+  setCaseRef: (caseId: string, version: number, lesionVersion?: number) => void;
   hydrateCase: (detail: CaseDetail) => void;
   markAnalysisStale: () => void;
   startNewCase: () => void;
@@ -58,6 +59,7 @@ const EMPTY_FORMULA: Formula = {
 const initial = {
   caseId: null as string | null,
   caseVersion: 0,
+  lesionVersion: 1,
   patient: DEMO_PATIENT,
   analysis: DEMO_ANALYSIS,
   analysisMeta: DEMO_META,
@@ -87,7 +89,12 @@ export const useCaseStore = create<CaseStore>()(
       removeLesion: id => set({ lesions: get().lesions.filter(l => l.id !== id) }),
       setFormula: formula => set({ formula }),
       setHorizon: horizon => set({ horizon }),
-      setCaseRef: (caseId, caseVersion) => set({ caseId, caseVersion }),
+      setCaseRef: (caseId, caseVersion, lesionVersion) =>
+        set(state => ({
+          caseId,
+          caseVersion,
+          lesionVersion: lesionVersion ?? state.lesionVersion,
+        })),
       markAnalysisStale: () => set({ analysisReady: false }),
       hydrateCase: detail => {
         const latestAnalysis = detail.analyses.find(
@@ -109,6 +116,7 @@ export const useCaseStore = create<CaseStore>()(
         set({
           caseId: detail.case.id,
           caseVersion: detail.case.version,
+          lesionVersion: detail.case.lesionVersion,
           patient: detail.case.patient,
           lesions: detail.case.lesions,
           analysis,
@@ -126,6 +134,7 @@ export const useCaseStore = create<CaseStore>()(
           ...initial,
           caseId: null,
           caseVersion: 0,
+          lesionVersion: 1,
           analysisReady: false,
           formula: { ...EMPTY_FORMULA },
           completed: ['home'],
@@ -149,6 +158,7 @@ export const useCaseStore = create<CaseStore>()(
           ...state,
           caseId: state.caseId ?? null,
           caseVersion: state.caseVersion ?? 0,
+          lesionVersion: state.lesionVersion ?? 1,
           analysisReady: state.analysisReady ?? true,
           analysisMeta: state.analysisMeta ?? { ...DEMO_META },
           lesions: Array.isArray(state.lesions)
@@ -159,6 +169,7 @@ export const useCaseStore = create<CaseStore>()(
       partialize: state => ({
         caseId: state.caseId,
         caseVersion: state.caseVersion,
+        lesionVersion: state.lesionVersion,
         patient: state.patient,
         analysis: state.analysis,
         analysisMeta: state.analysisMeta,
