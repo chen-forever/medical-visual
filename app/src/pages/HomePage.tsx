@@ -1,4 +1,7 @@
-import { ArrowRight, ChevronRight, Clock3, Play, ShieldCheck, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertCircle, ArrowRight, ChevronRight, Clock3, FolderClock, Play, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
+import { getCase, listCases, type CaseSummary } from '../api/casesClient';
+import { analysisErrorMessage } from '../api/analysisClient';
 import BodyGlyph from '../components/BodyGlyph';
 import { Seal, TaijiMark } from '../components/TcmOrnaments';
 import { STEPS } from '../data';
@@ -7,9 +10,51 @@ import { useCaseStore, usePrimaryPattern } from '../store';
 
 export default function HomePage() {
   const patient = useCaseStore(state => state.patient);
+  const caseId = useCaseStore(state => state.caseId);
   const completed = useCaseStore(state => state.completed);
+  const hydrateCase = useCaseStore(state => state.hydrateCase);
+  const startNewCase = useCaseStore(state => state.startNewCase);
   const pattern = usePrimaryPattern();
   const progress = Math.round((completed.length / STEPS.length) * 100);
+  const [cases, setCases] = useState<CaseSummary[]>([]);
+  const [loadingCases, setLoadingCases] = useState(true);
+  const [openingCaseId, setOpeningCaseId] = useState('');
+  const [caseError, setCaseError] = useState('');
+
+  const refreshCases = async () => {
+    setLoadingCases(true);
+    setCaseError('');
+    try {
+      setCases(await listCases());
+    } catch (caught) {
+      setCaseError(analysisErrorMessage(caught));
+    } finally {
+      setLoadingCases(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshCases();
+  }, []);
+
+  const openCase = async (id: string) => {
+    setOpeningCaseId(id);
+    setCaseError('');
+    try {
+      const detail = await getCase(id);
+      hydrateCase(detail);
+      go(detail.analyses.length ? 'analysis' : 'patient');
+    } catch (caught) {
+      setCaseError(analysisErrorMessage(caught));
+    } finally {
+      setOpeningCaseId('');
+    }
+  };
+
+  const newCase = () => {
+    startNewCase();
+    go('patient');
+  };
 
   return (
     <div className="home-page">
@@ -34,7 +79,7 @@ export default function HomePage() {
             <button className="btn btn-gold" onClick={() => go('analysis')}>
               <Play size={15} /> 继续当前病例
             </button>
-            <button className="btn btn-ghost" onClick={() => go('patient')}>
+            <button className="btn btn-ghost" onClick={newCase}>
               新建病例 <ArrowRight size={15} />
             </button>
           </div>
@@ -114,6 +159,63 @@ export default function HomePage() {
             ))}
           </div>
         </article>
+      </section>
+
+      <section className="panel recent-cases">
+        <div className="panel-head">
+          <div>
+            <span className="panel-kicker">CASE ARCHIVE / 病例库</span>
+            <h3>最近病例</h3>
+          </div>
+          <button className="text-btn" onClick={refreshCases} disabled={loadingCases}>
+            <RefreshCw size={13} className={loadingCases ? 'spin' : ''} />
+            {loadingCases ? '读取中…' : '刷新'}
+          </button>
+        </div>
+        {caseError && (
+          <div className="recent-case-error">
+            <AlertCircle size={13} />
+            <span>{caseError}</span>
+          </div>
+        )}
+        {!caseError && !loadingCases && cases.length === 0 && (
+          <div className="recent-case-empty">
+            <FolderClock size={20} />
+            <div>
+              <strong>还没有服务端病例</strong>
+              <span>保存一份新病例后，会在这里出现。</span>
+            </div>
+            <button className="btn btn-gold small" onClick={newCase}>新建病例</button>
+          </div>
+        )}
+        {cases.length > 0 && (
+          <div className="recent-case-grid">
+            {cases.slice(0, 6).map(item => (
+              <button
+                key={item.id}
+                className={`recent-case-item ${item.id === caseId ? 'active' : ''}`}
+                onClick={() => openCase(item.id)}
+                disabled={openingCaseId === item.id}
+              >
+                <div className="recent-case-top">
+                  <span className="recent-case-avatar">{item.patient.alias.slice(0, 1) || '病'}</span>
+                  <span className="recent-case-name">{item.patient.alias || '未命名病例'}</span>
+                  {item.id === caseId && <span className="recent-case-current">当前</span>}
+                </div>
+                <p>{item.patient.chiefComplaint}</p>
+                <div className="recent-case-meta">
+                  <span>{item.latestAnalysis ? item.latestAnalysis.name : '待分析'}</span>
+                  {item.latestAnalysis && <b>{item.latestAnalysis.confidence}%</b>}
+                  {item.latestFormula && <span>· {item.latestFormula.name}</span>}
+                </div>
+                <div className="recent-case-foot">
+                  <span>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span>
+                  <span>{openingCaseId === item.id ? '打开中…' : '打开病例'} <ChevronRight size={12} /></span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="home-principles">

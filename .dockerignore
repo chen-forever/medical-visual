@@ -9,6 +9,7 @@ app/.vite
 .env
 .env.*
 server/.env.local
+server/data
 docs
 previews
 模型候选

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, BookOpen, Check, FlaskConical, Info, Plus, Save, Trash2 } from 'lucide-react';
+import { createCase, saveFormula as saveFormulaServer } from '../api/casesClient';
+import { analysisErrorMessage } from '../api/analysisClient';
 import { go } from '../navigation';
 import { useCaseStore } from '../store';
 import type { Formula, Herb } from '../types';
@@ -43,6 +45,9 @@ const LIBRARY: Array<{ name: string; hint: string; herbs: Herb[] }> = [
 
 export default function FormulaPage() {
   const stored = useCaseStore(state => state.formula);
+  const patient = useCaseStore(state => state.patient);
+  const caseId = useCaseStore(state => state.caseId);
+  const setCaseRef = useCaseStore(state => state.setCaseRef);
   const setFormula = useCaseStore(state => state.setFormula);
   const markComplete = useCaseStore(state => state.markComplete);
   const [formula, setLocalFormula] = useState<Formula>({
@@ -50,6 +55,8 @@ export default function FormulaPage() {
     herbs: stored.herbs.map(herb => ({ ...herb })),
   });
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const updateHerb = (id: string, patch: Partial<Herb>) => {
     setLocalFormula(prev => ({
@@ -81,11 +88,26 @@ export default function FormulaPage() {
     setSaved(false);
   };
 
-  const save = (next = false) => {
-    setFormula(formula);
-    markComplete('formula');
-    setSaved(true);
-    if (next) window.setTimeout(() => go('timeline'), 240);
+  const save = async (next = false) => {
+    setSaving(true);
+    setError('');
+    try {
+      let activeCaseId = caseId;
+      if (!activeCaseId) {
+        const created = await createCase(patient);
+        activeCaseId = created.id;
+        setCaseRef(created.id, created.version);
+      }
+      await saveFormulaServer(activeCaseId, formula);
+      setFormula(formula);
+      markComplete('formula');
+      setSaved(true);
+      if (next) window.setTimeout(() => go('timeline'), 240);
+    } catch (caught) {
+      setError(analysisErrorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -170,11 +192,13 @@ export default function FormulaPage() {
             </div>
           </div>
 
+          {error && <div className="form-error">{error}</div>}
+
           <div className="formula-actions">
-            <button className="btn btn-ghost" onClick={() => save(false)}>
-              {saved ? <Check size={15} /> : <Save size={15} />} {saved ? '已保存' : '保存方案'}
+            <button className="btn btn-ghost" onClick={() => save(false)} disabled={saving}>
+              {saved ? <Check size={15} /> : <Save size={15} />} {saving ? '保存中…' : saved ? '已保存' : '保存方案'}
             </button>
-            <button className="btn btn-gold" onClick={() => save(true)}>
+            <button className="btn btn-gold" onClick={() => save(true)} disabled={saving}>
               保存并进入时间模拟 <ArrowRight size={15} />
             </button>
           </div>

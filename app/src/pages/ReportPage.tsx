@@ -1,4 +1,7 @@
-import { ArrowLeft, Download, FileText, Printer, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, Check, Download, FileText, Printer, Save, ShieldCheck } from 'lucide-react';
+import { saveReport } from '../api/casesClient';
+import { analysisErrorMessage } from '../api/analysisClient';
 import BodyGlyph from '../components/BodyGlyph';
 import { MeridianDivider, Seal } from '../components/TcmOrnaments';
 import { ORGAN_BY_ID, SIMULATION } from '../data';
@@ -7,23 +10,59 @@ import { useCaseStore, usePrimaryPattern } from '../store';
 
 export default function ReportPage() {
   const patient = useCaseStore(state => state.patient);
+  const caseId = useCaseStore(state => state.caseId);
   const analysis = useCaseStore(state => state.analysis);
   const formula = useCaseStore(state => state.formula);
   const lesions = useCaseStore(state => state.lesions);
   const pattern = usePrimaryPattern();
+  const [saving, setSaving] = useState(false);
+  const [savedReportId, setSavedReportId] = useState('');
+  const [error, setError] = useState('');
   const now = new Date();
   const dateText = `${now.getFullYear()} 年 ${now.getMonth() + 1} 月 ${now.getDate()} 日`;
   const reportNo = `QH-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-038`;
+
+  const saveSnapshot = async () => {
+    if (!caseId) {
+      setError('请先保存病例并完成分析，再保存报告。');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await saveReport(caseId, {
+        lesions,
+        simulation: SIMULATION,
+      });
+      setSavedReportId(saved.id);
+    } catch (caught) {
+      setError(analysisErrorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="report-page">
       <div className="report-actions">
         <button className="btn btn-ghost" onClick={() => go('timeline')}><ArrowLeft size={14} /> 返回时间模拟</button>
         <div>
+          <button className="btn btn-ghost" onClick={saveSnapshot} disabled={saving || !caseId}>
+            {savedReportId ? <Check size={14} /> : <Save size={14} />}
+            {saving ? '保存中…' : savedReportId ? '已保存快照' : '保存报告快照'}
+          </button>
           <button className="btn btn-ghost" onClick={() => window.print()}><Printer size={14} /> 打印 / 另存 PDF</button>
           <button className="btn btn-gold" onClick={() => window.print()}><Download size={14} /> 导出报告</button>
         </div>
       </div>
+
+      {error && <div className="analysis-api-error"><ShieldCheck size={14} /><span>{error}</span></div>}
+      {savedReportId && (
+        <div className="report-saved-note">
+          <Check size={13} />
+          <span>报告快照已写入服务端 · {savedReportId.slice(0, 8)}</span>
+        </div>
+      )}
 
       <article className="report-paper" id="report-paper">
         <Seal text="辨证论治" vertical size="sm" className="report-seal" />

@@ -22,11 +22,13 @@ The server reads `server/.env.local` for the DeepSeek key and serves
 ```bash
 docker build -t qihuang-state .
 docker run --rm -p 8787:8787 \
+  -v qihuang-data:/repo/data \
   -e DEEPSEEK_API_KEY="your-new-key" \
   qihuang-state
 ```
 
-Do **not** bake the key into the image. Pass it at runtime.
+Do **not** bake the key into the image. Pass it at runtime. The named volume
+keeps the SQLite database across container restarts.
 
 For a public deployment also set:
 
@@ -34,6 +36,9 @@ For a public deployment also set:
 HOST=0.0.0.0
 ALLOWED_ORIGIN=https://your-domain.example
 ```
+
+**Do not expose Backend Lite publicly without authentication first.** It is a
+local single-user backend and has no login, RBAC, or audit access control yet.
 
 ## Still needed for real deployment
 

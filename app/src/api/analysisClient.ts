@@ -87,6 +87,12 @@ export function analysisErrorMessage(error: unknown) {
         return 'DeepSeek 返回的结构不完整，已保留上一次分析。';
       case 'NETWORK_ERROR':
         return '没有连上本地 API 服务，请先运行 server。';
+      case 'CASE_VERSION_CONFLICT':
+        return '病例已被另一个窗口修改，请返回患者信息重新加载。';
+      case 'CASE_NOT_FOUND':
+        return '病例不存在或已被删除。';
+      case 'REPORT_NEEDS_ANALYSIS':
+        return '请先完成一次证型分析，再生成报告。';
       default:
         return error.message;
     }

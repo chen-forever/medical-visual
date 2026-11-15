@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, Ear, Eye, Hand, MessageSquareText, RotateCcw, ShieldCheck, UserRound } from 'lucide-react';
+import { createCase, updateCase } from '../api/casesClient';
+import { analysisErrorMessage } from '../api/analysisClient';
 import { DEMO_PATIENT } from '../data';
 import { go } from '../navigation';
 import { useCaseStore } from '../store';
@@ -9,10 +11,15 @@ const QUICK_TAGS = ['入睡困难', '多梦易醒', '乏力', '纳差', '便溏'
 
 export default function PatientPage() {
   const stored = useCaseStore(state => state.patient);
+  const caseId = useCaseStore(state => state.caseId);
+  const caseVersion = useCaseStore(state => state.caseVersion);
   const setPatient = useCaseStore(state => state.setPatient);
+  const setCaseRef = useCaseStore(state => state.setCaseRef);
+  const markAnalysisStale = useCaseStore(state => state.markAnalysisStale);
   const markComplete = useCaseStore(state => state.markComplete);
   const [form, setForm] = useState<Patient>({ ...stored });
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const update = <K extends keyof Patient>(key: K, value: Patient[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -28,7 +35,7 @@ export default function PatientPage() {
     }));
   };
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!form.alias.trim()) {
       setError('请先填写患者称呼。');
@@ -38,9 +45,22 @@ export default function PatientPage() {
       setError('请填写主诉，后续分析需要它作为入口。');
       return;
     }
-    setPatient(form);
-    markComplete('patient');
-    go('analysis');
+    setSaving(true);
+    setError('');
+    try {
+      const saved = caseId
+        ? await updateCase(caseId, form, caseVersion, useCaseStore.getState().lesions)
+        : await createCase(form);
+      setPatient(form);
+      setCaseRef(saved.id, saved.version);
+      markAnalysisStale();
+      markComplete('patient');
+      go('analysis');
+    } catch (caught) {
+      setError(analysisErrorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -128,7 +148,7 @@ export default function PatientPage() {
           <div className="privacy-note">
             <ShieldCheck size={15} />
             <span>
-              演示模式：请勿填写真实姓名、电话、身份证或人脸照片。数据只保存在本机浏览器。
+              演示模式：请勿填写真实姓名、电话、身份证或人脸照片。本次病例会保存到本地服务端 SQLite，仍请使用去标识化信息。
             </span>
           </div>
         </section>
@@ -209,7 +229,9 @@ export default function PatientPage() {
         </div>
         <div className="action-bar-actions">
           <button type="button" className="btn btn-ghost" onClick={() => go('home')}>返回工作台</button>
-          <button type="submit" className="btn btn-gold">保存并进入分析 <ArrowRight size={15} /></button>
+          <button type="submit" className="btn btn-gold" disabled={saving}>
+            {saving ? '保存中…' : '保存并进入分析'} <ArrowRight size={15} />
+          </button>
         </div>
       </div>
     </form>

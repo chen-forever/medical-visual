@@ -14,10 +14,10 @@ import {
 } from 'lucide-react';
 import {
   analysisErrorMessage,
-  analyzeCase,
   getAnalysisHealth,
   type AnalysisHealth,
 } from '../api/analysisClient';
+import { analyzeCaseById, createCase } from '../api/casesClient';
 import { go } from '../navigation';
 import { useCaseStore } from '../store';
 import type { Pattern } from '../types';
@@ -63,10 +63,14 @@ function sourceLabel(meta: ReturnType<typeof useCaseStore.getState>['analysisMet
 
 export default function AnalysisPage() {
   const patient = useCaseStore(state => state.patient);
+  const caseId = useCaseStore(state => state.caseId);
+  const caseVersion = useCaseStore(state => state.caseVersion);
   const analysis = useCaseStore(state => state.analysis);
   const analysisMeta = useCaseStore(state => state.analysisMeta);
+  const analysisReady = useCaseStore(state => state.analysisReady);
   const primaryId = useCaseStore(state => state.primaryPatternId);
   const setAnalysis = useCaseStore(state => state.setAnalysis);
+  const setCaseRef = useCaseStore(state => state.setCaseRef);
   const setPrimaryPattern = useCaseStore(state => state.setPrimaryPattern);
   const markComplete = useCaseStore(state => state.markComplete);
   const [loading, setLoading] = useState(false);
@@ -74,8 +78,8 @@ export default function AnalysisPage() {
   const [health, setHealth] = useState<AnalysisHealth | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const primary = analysis.patterns.find(pattern => pattern.id === primaryId) ?? analysis.patterns[0];
-  const blocked = analysis.redFlags.length > 0;
-  const source = sourceLabel(analysisMeta);
+  const blocked = analysisReady && analysis.redFlags.length > 0;
+  const source = analysisReady ? sourceLabel(analysisMeta) : '尚未分析';
 
   useEffect(() => {
     let active = true;
@@ -95,7 +99,13 @@ export default function AnalysisPage() {
     setLoading(true);
     setError('');
     try {
-      const result = await analyzeCase(patient, controller.signal);
+      let activeCaseId = caseId;
+      if (!activeCaseId) {
+        const created = await createCase(patient);
+        activeCaseId = created.id;
+        setCaseRef(created.id, created.version);
+      }
+      const result = await analyzeCaseById(activeCaseId, controller.signal);
       if (controller.signal.aborted) return;
       setAnalysis(result.analysis, result.meta);
     } catch (caught) {
@@ -107,7 +117,7 @@ export default function AnalysisPage() {
   };
 
   const confirm = () => {
-    if (!primary || blocked) return;
+    if (!analysisReady || !primary || blocked) return;
     markComplete('analysis');
     go('body');
   };
@@ -121,11 +131,13 @@ export default function AnalysisPage() {
             {source}
           </span>
           <span className="source-note">
-            {analysisMeta.provider === 'deepseek'
-              ? `已基于「${patient.alias}」的四诊信息生成 ${analysis.patterns.length} 个候选；点击候选可切换主证候。`
-              : `当前为演示分析；点击「DeepSeek 分析」生成新的证型候选。`}
+            {!analysisReady
+              ? '四诊信息已保存；点击「DeepSeek 分析」生成证型候选。'
+              : analysisMeta.provider === 'deepseek'
+                ? `已基于「${patient.alias}」的四诊信息生成 ${analysis.patterns.length} 个候选；点击候选可切换主证候。`
+                : `当前为演示分析；点击「DeepSeek 分析」生成新的证型候选。`}
           </span>
-          {health && !health.configured && analysisMeta.provider !== 'deepseek' && (
+          {health && !health.configured && !analysisReady && (
             <span className="source-warning">本地 API 未配置 Key</span>
           )}
         </div>
@@ -167,13 +179,15 @@ export default function AnalysisPage() {
 
           <section className={`panel redflag-panel ${blocked ? 'has-flags' : ''}`}>
             <div className="redflag-head">
-              {blocked ? <ShieldAlert size={15} /> : <ShieldCheck size={15} />}
+              {!analysisReady ? <ShieldCheck size={15} /> : blocked ? <ShieldAlert size={15} /> : <ShieldCheck size={15} />}
               <b>红旗筛查</b>
               <span className={`ok-pill ${blocked ? 'blocked' : ''}`}>
-                {blocked ? `命中 ${analysis.redFlags.length} 项` : '未命中'}
+                {!analysisReady ? '待分析' : blocked ? `命中 ${analysis.redFlags.length} 项` : '未命中'}
               </span>
             </div>
-            {blocked ? (
+            {!analysisReady ? (
+              <p>尚未运行分析。完成 DeepSeek 分析后会在这里显示红旗筛查结果。</p>
+            ) : blocked ? (
               <ul className="redflag-list">
                 {analysis.redFlags.map(flag => <li key={flag}>{flag}</li>)}
               </ul>
@@ -188,7 +202,9 @@ export default function AnalysisPage() {
               <div><span className="panel-kicker">MISSING</span><h3>还缺什么</h3></div>
             </div>
             <div className="missing-list">
-              {analysis.missingInfo.length ? analysis.missingInfo.map(item => (
+              {!analysisReady ? (
+                <p className="small-copy">分析后显示缺失信息。</p>
+              ) : analysis.missingInfo.length ? analysis.missingInfo.map(item => (
                 <button key={item} onClick={() => go('patient')}><CircleAlert size={12} /> {item} <span>补充</span></button>
               )) : <p className="small-copy">模型未返回额外缺失信息。</p>}
             </div>
@@ -204,7 +220,19 @@ export default function AnalysisPage() {
             </div>
           )}
 
-          {!primary ? (
+          {!analysisReady ? (
+            <section className="panel analysis-empty">
+              <span className="panel-kicker">WAITING / 等待分析</span>
+              <h2>四诊已保存，等待证型分析</h2>
+              <p>点击右上角的「DeepSeek 分析」，生成证型候选、证据和脏腑映射。分析结果会保存到服务端。</p>
+              <div className="empty-analysis-actions">
+                <button className="btn btn-gold" onClick={runAgain} disabled={loading}>
+                  <Sparkles size={14} /> 开始 DeepSeek 分析
+                </button>
+                <button className="btn btn-ghost" onClick={() => go('patient')}>返回修改四诊</button>
+              </div>
+            </section>
+          ) : !primary ? (
             <section className="panel analysis-blocked">
               <span className="panel-kicker">SAFETY STOP / 安全阻断</span>
               <h2>红旗规则命中，暂停证型推演</h2>
@@ -282,12 +310,14 @@ export default function AnalysisPage() {
             <button
               className="btn btn-gold"
               onClick={confirm}
-              disabled={!primary || blocked}
+              disabled={!analysisReady || !primary || blocked}
               title={blocked ? '红旗命中时不能进入人体模拟' : undefined}
             >
-              {blocked || !primary
-                ? '先处理红旗 / 缺少候选'
-                : <>确认「{primary.name}」，生成人体 <ArrowRight size={15} /></>}
+              {!analysisReady
+                ? '等待证型分析'
+                : blocked || !primary
+                  ? '先处理红旗 / 缺少候选'
+                  : <>确认「{primary.name}」，生成人体 <ArrowRight size={15} /></>}
             </button>
           </div>
         </div>

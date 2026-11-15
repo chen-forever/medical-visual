@@ -39,7 +39,27 @@ Without a key the server still starts; `/api/health` reports
 ## Endpoints
 
 - `GET /api/health`
-- `POST /api/analyze` with `{ "patient": { ... } }`
+- `GET /api/cases`
+- `POST /api/cases` with `{ "patient": { ... } }`
+- `GET /api/cases/:id`
+- `PATCH /api/cases/:id` with `{ patient, version, lesions? }`
+- `DELETE /api/cases/:id` (soft delete)
+- `POST /api/cases/:id/analyze`
+- `GET /api/cases/:id/analyses`
+- `POST /api/cases/:id/formulas`
+- `GET /api/cases/:id/formulas`
+- `POST /api/cases/:id/reports`
+- `GET /api/cases/:id/reports`
+- `GET /api/reports/:id`
+- `POST /api/analyze` (legacy, no persistence)
+
+## Storage
+
+Cases, analysis runs, formulas, and immutable report snapshots are stored in
+SQLite at `data/qihuang.sqlite`. The data directory is ignored by Git.
+
+This Backend Lite has **no login or multi-user permissions**. Keep it bound to
+localhost; add authentication before exposing it to a network.
 
 ## Security
 

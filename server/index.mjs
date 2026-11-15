@@ -4,6 +4,7 @@ import { readFile, stat as statFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { analyzeWithDeepSeek } from './deepseek.mjs';
+import { getStore } from './db.mjs';
 import { HttpError } from './schema.mjs';
 
 const envPath = fileURLToPath(new URL('./.env.local', import.meta.url));
@@ -15,6 +16,7 @@ if (existsSync(envPath)) {
   }
 }
 
+const store = getStore();
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '127.0.0.1';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGIN || 'http://127.0.0.1:5173,http://localhost:5173')
@@ -49,7 +51,7 @@ const MIME = {
 
 function corsHeaders(origin) {
   const headers = {
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     'access-control-allow-headers': 'content-type',
     'access-control-max-age': '600',
   };
@@ -152,6 +154,139 @@ function readBody(req) {
   });
 }
 
+async function readJson(req) {
+  const rawBody = await readBody(req);
+  try {
+    return JSON.parse(rawBody || '{}');
+  } catch {
+    throw new HttpError(400, 'INVALID_JSON', '请求体不是合法 JSON。');
+  }
+}
+
+async function handleAnalyze(res, origin, patient) {
+  if (!patient) throw new HttpError(400, 'INVALID_PATIENT', '请求中缺少 patient。');
+  const result = await analyzeWithDeepSeek(patient);
+  sendJson(res, 200, result, origin);
+}
+
+async function handleApi(req, res, pathname, origin) {
+  if (req.method === 'GET' && pathname === '/api/health') {
+    sendJson(
+      res,
+      200,
+      {
+        ok: true,
+        provider: 'deepseek',
+        configured: Boolean(process.env.DEEPSEEK_API_KEY?.trim()),
+        model: process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-flash',
+        storage: 'sqlite',
+      },
+      origin,
+    );
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/cases') {
+    sendJson(res, 200, { cases: store.listCases() }, origin);
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/cases') {
+    const body = await readJson(req);
+    const created = store.createCase(body.patient);
+    sendJson(res, 201, { case: created }, origin);
+    return true;
+  }
+
+  const caseMatch = pathname.match(/^\/api\/cases\/([^/]+)$/);
+  if (caseMatch) {
+    const id = decodeURIComponent(caseMatch[1]);
+    if (req.method === 'GET') {
+      sendJson(res, 200, store.getCase(id), origin);
+      return true;
+    }
+    if (req.method === 'PATCH') {
+      const body = await readJson(req);
+      const updated = store.updateCase(id, body);
+      sendJson(res, 200, { case: updated }, origin);
+      return true;
+    }
+    if (req.method === 'DELETE') {
+      store.softDeleteCase(id);
+      sendJson(res, 200, { ok: true }, origin);
+      return true;
+    }
+  }
+
+  const caseActionMatch = pathname.match(/^\/api\/cases\/([^/]+)\/(analyze|analyses|formulas|reports)$/);
+  if (caseActionMatch) {
+    const id = decodeURIComponent(caseActionMatch[1]);
+    const action = caseActionMatch[2];
+
+    if (action === 'analyses' && req.method === 'GET') {
+      sendJson(res, 200, { analyses: store.listAnalyses(id) }, origin);
+      return true;
+    }
+
+    if (action === 'analyze' && req.method === 'POST') {
+      if (isRateLimited(req)) {
+        throw new HttpError(429, 'RATE_LIMITED', '请求过于频繁，请稍后再试。');
+      }
+      const record = store.getCase(id).case;
+      const result = await analyzeWithDeepSeek(record.patient);
+      const saved = store.saveAnalysis(id, result.analysis, result.meta);
+      sendJson(
+        res,
+        200,
+        { ...result, analysisId: saved.id, caseId: id },
+        origin,
+      );
+      return true;
+    }
+
+    if (action === 'formulas' && req.method === 'GET') {
+      sendJson(res, 200, { formulas: store.listFormulas(id) }, origin);
+      return true;
+    }
+
+    if (action === 'formulas' && req.method === 'POST') {
+      const body = await readJson(req);
+      const saved = store.saveFormula(id, body.formula);
+      sendJson(res, 201, { formula: saved }, origin);
+      return true;
+    }
+
+    if (action === 'reports' && req.method === 'GET') {
+      sendJson(res, 200, { reports: store.listReports(id) }, origin);
+      return true;
+    }
+
+    if (action === 'reports' && req.method === 'POST') {
+      const body = await readJson(req);
+      const saved = store.saveReport(id, body);
+      sendJson(res, 201, saved, origin);
+      return true;
+    }
+  }
+
+  const reportMatch = pathname.match(/^\/api\/reports\/([^/]+)$/);
+  if (reportMatch && req.method === 'GET') {
+    sendJson(res, 200, store.getReport(decodeURIComponent(reportMatch[1])), origin);
+    return true;
+  }
+
+  if (pathname === '/api/analyze' && req.method === 'POST') {
+    if (isRateLimited(req)) {
+      throw new HttpError(429, 'RATE_LIMITED', '请求过于频繁，请稍后再试。');
+    }
+    const body = await readJson(req);
+    await handleAnalyze(res, origin, body.patient);
+    return true;
+  }
+
+  return false;
+}
+
 async function handler(req, res) {
   const origin = req.headers.origin;
   if (req.method === 'OPTIONS') {
@@ -160,58 +295,28 @@ async function handler(req, res) {
     return;
   }
 
-  if (req.url?.startsWith('/api/')) {
-    if (req.method === 'GET' && req.url === '/api/health') {
-      sendJson(
-        res,
-        200,
-        {
-          ok: true,
-          provider: 'deepseek',
-          configured: Boolean(process.env.DEEPSEEK_API_KEY?.trim()),
-          model: process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-flash',
-        },
-        origin,
-      );
-      return;
+  const pathname = (() => {
+    try {
+      return new URL(req.url, 'http://localhost').pathname;
+    } catch {
+      return '';
     }
+  })();
 
-    if (req.method !== 'POST' || req.url !== '/api/analyze') {
-      sendJson(res, 404, { error: { code: 'NOT_FOUND', message: '接口不存在。' } }, origin);
-      return;
-    }
-
-    if (isRateLimited(req)) {
-      sendJson(
-        res,
-        429,
-        { error: { code: 'RATE_LIMITED', message: '请求过于频繁，请稍后再试。' } },
-        origin,
-      );
-      return;
-    }
-
+  if (pathname.startsWith('/api/')) {
     const startedAt = Date.now();
     try {
-      const rawBody = await readBody(req);
-      let payload;
-      try {
-        payload = JSON.parse(rawBody || '{}');
-      } catch {
-        throw new HttpError(400, 'INVALID_JSON', '请求体不是合法 JSON。');
+      const handled = await handleApi(req, res, pathname, origin);
+      if (!handled) {
+        sendJson(res, 404, { error: { code: 'NOT_FOUND', message: '接口不存在。' } }, origin);
       }
-      const { patient } = payload;
-      if (!patient) throw new HttpError(400, 'INVALID_PATIENT', '请求中缺少 patient。');
-      const result = await analyzeWithDeepSeek(patient);
-      sendJson(res, 200, result, origin);
-      console.log(`[analyze] 200 ${Date.now() - startedAt}ms`);
     } catch (error) {
       const status = error instanceof HttpError ? error.status : 500;
       const code = error instanceof HttpError ? error.code : 'INTERNAL_ERROR';
       const message =
         error instanceof HttpError ? error.message : '服务内部错误，请稍后重试。';
       sendJson(res, status, { error: { code, message } }, origin);
-      console.log(`[analyze] ${status} ${code} ${Date.now() - startedAt}ms`);
+      console.log(`[api] ${status} ${code} ${req.method} ${pathname} ${Date.now() - startedAt}ms`);
     }
     return;
   }

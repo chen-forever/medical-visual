@@ -87,8 +87,10 @@ node server/index.mjs
 
 ## 数据与边界
 
-- 当前为演示数据，所有病例、证型、药方均保存在本机浏览器（Zustand persist）。
-- 症状分析为 Mock 流程，未接入真实中医大模型 API。
+- 病例、分析运行、药方、报告快照保存在本地 Node 服务端的 SQLite 数据库（`server/data/qihuang.sqlite`）。
+- 浏览器只保留草稿缓存；清除浏览器不会删除服务端病例。
+- 当前 Backend Lite 只监听本机，**没有登录/多用户权限**；不要直接暴露到公网。
+- 症状分析已经接入真实 DeepSeek API（通过本地 BFF），失败时保留旧分析并显示错误。
 - 系统不诊断、不自动开方、不承诺疗效；时间轴是示意推演。
 - 真实患者姓名、电话、身份证、人脸照片不应录入。
 
@@ -99,17 +101,23 @@ app/
 ├─ public/models/human-atlas/   # 公开解剖模型与许可
 ├─ src/
 │  ├─ anatomy/                   # 模型加载、Three.js 场景
+│  ├─ api/                       # DeepSeek 与病例 API 客户端
 │  ├─ components/                # 共用视觉组件
 │  ├─ pages/                     # 十页
 │  ├─ data.ts                    # 演示数据
 │  ├─ store.ts                   # 病例状态
 │  └─ styles.css                 # 设计系统
+server/
+├─ index.mjs                     # API + 静态托管
+├─ db.mjs                        # SQLite 病例/分析/药方/报告
+├─ deepseek.mjs                  # DeepSeek 适配
+└─ data/qihuang.sqlite           # 本地数据库（不提交）
 ```
 
 ## 下一步
 
-1. 接入真实中医大模型 API（服务端代理，输出结构化 JSON）。
-2. 把 Mock 分析替换为规则引擎 + 模型候选，并保留证据编辑。
-3. 增加模型首屏分包/减面，目标首屏 8–12 MB。
-4. 补真实胃壁四层网格与经络走行审核。
-5. 报告导出改为服务端 PDF（可选），当前使用浏览器打印。
+1. 加登录、会话和审计日志。
+2. 报告分享链接与撤销。
+3. 服务端 PDF 导出。
+4. 多用户/RBAC 与 PostgreSQL 迁移。
+5. 正式部署、备份与监控。
