@@ -1,14 +1,21 @@
 # Local API server
 
 Small local BFF for the Qihuang front-end. It keeps the DeepSeek API key on the
-server and returns validated `AnalysisResult` JSON.
+server, persists cases in SQLite, and returns validated `AnalysisResult` JSON.
 
-## Run
+## Run from repository root
+
+```bash
+npm run setup
+npm start
+```
+
+Open `http://127.0.0.1:8787/`.
+
+## Development
 
 ```bash
 cd server
-cp .env.example .env.local
-# put a NEW DeepSeek key in .env.local
 npm run dev
 ```
 

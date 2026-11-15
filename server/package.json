@@ -2,6 +2,9 @@
   "name": "qihuang-state-server",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "node index.mjs",
     "start": "node index.mjs",

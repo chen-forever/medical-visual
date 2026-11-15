@@ -1,18 +1,26 @@
 # 岐黄 · 状态 / 中医数字人体
 
-方案 A（视觉冲刺）的可运行前端：十页闭环、公开数字人体、默认不旋转、仅缩放。
+十页闭环、公开数字人体、默认不旋转、仅缩放。
 
-## 运行
+## 从仓库根目录运行
+
+前置条件：Node.js 24。
+
+```bash
+npm run setup
+npm start
+```
+
+打开 `http://127.0.0.1:8787/`。`npm run setup` 会在 `app/` 执行 `npm ci` 并构建前端。
+
+开发模式：
 
 ```bash
 cd app
-npm install
 npm run dev
 ```
 
-浏览器打开 `http://127.0.0.1:5173/`。
-
-生产构建：
+浏览器打开 `http://127.0.0.1:5173/`。生产构建：
 
 ```bash
 npm run build
@@ -21,31 +29,19 @@ npm run preview
 
 ## DeepSeek 分析（本地 BFF）
 
-真实 Key 不放在前端。先启动服务端代理：
+真实 Key 不放在前端。根目录运行 `npm run setup` 会创建 `server/.env.local`；填入：
 
-```bash
-cd server
-cp .env.example .env.local
-# 在 .env.local 填入新的 DEEPSEEK_API_KEY
-npm run dev
+```text
+DEEPSEEK_API_KEY=新的Key
 ```
 
-再启动前端：
-
-```bash
-cd app
-npm run dev
-```
-
-Vite 会把 `/api` 代理到 `http://127.0.0.1:8787`。分析页点击「DeepSeek 分析」才会调用 API；没有 Key 或调用失败时保留当前演示分析，并显示可读错误。
+然后从根目录 `npm start`。Vite 开发模式会把 `/api` 代理到 `http://127.0.0.1:8787`。分析页点击「DeepSeek 分析」才会调用 API；没有 Key 或调用失败时保留当前演示分析，并显示可读错误。
 
 生产式本地运行：
 
 ```bash
-cd app
-npm run build
-cd ..
-node server/index.mjs
+npm run setup
+npm start
 ```
 
 打开 `http://127.0.0.1:8787/`。Docker 部署见 [DEPLOYMENT.md](<../server/DEPLOYMENT.md>)。

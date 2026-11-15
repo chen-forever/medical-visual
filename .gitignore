@@ -15,3 +15,6 @@ Thumbs.db
 %SystemDrive%/
 
 server/data/
+
+# third-party reference chart; keep local unless permission is confirmed
+微信图片_*.jpg

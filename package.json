@@ -1,0 +1,18 @@
+{
+  "name": "qihuang-state-workspace",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "setup": "node server/bootstrap.mjs && npm --prefix app ci && npm --prefix app run build && node server/verify-assets.mjs",
+    "build": "npm --prefix app run build",
+    "start": "node server/index.mjs",
+    "test": "npm --prefix server test && npm --prefix app run typecheck && node server/verify-assets.mjs",
+    "verify:assets": "node server/verify-assets.mjs",
+    "auth:set-password": "npm --prefix server run auth:set-password",
+    "db:info": "npm --prefix server run db:info"
+  }
+}
