@@ -1,0 +1,13 @@
+node_modules/
+app/node_modules/
+app/dist/
+app/.vite/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
+.tmp-*/
+*.local
+%SystemDrive%/
