@@ -14,6 +14,7 @@ import type { Atlas, Part, SystemId } from './atlas';
 import { SYSTEM_LABELS } from './labels';
 import { decodeModelResponse } from './model-download';
 import { ORGAN_BY_ID, ORGAN_META } from '../data';
+import type { OrganAbnormality } from '../data/patternVisuals';
 import type { Lesion, OrganMeta } from '../types';
 
 export interface BodyViewerHandle {
@@ -26,12 +27,24 @@ export interface BodyViewerHandle {
 
 interface LesionMarker extends Pick<Lesion, 'id' | 'organId' | 'label' | 'severity'> {}
 
+interface OrganFxField {
+  organId: string;
+  points: THREE.Points;
+  halo: THREE.Sprite;
+  seed: Float32Array;
+  count: number;
+  spread: number;
+  anchor: THREE.Vector3;
+  state: OrganAbnormality;
+}
+
 interface Props {
   visibleSystems: SystemId[];
   selectedOrganId?: string;
   onSelectOrgan?: (id: string) => void;
   clip?: number;
   particles?: boolean;
+  organVisuals?: Record<string, OrganAbnormality>;
   lesions?: LesionMarker[];
   focusOnSelect?: boolean;
   className?: string;
@@ -326,6 +339,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     onSelectOrgan,
     clip = 0,
     particles = false,
+    organVisuals = {},
     lesions = [],
     focusOnSelect = false,
     className = '',
@@ -334,12 +348,15 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const organVisualsKey = JSON.stringify(organVisuals);
   const propsRef = useRef({
     visibleSystems,
     selectedOrganId,
     onSelectOrgan,
     clip,
     particles,
+    organVisuals,
+    organVisualsKey,
     lesions,
     focusOnSelect,
   });
@@ -349,6 +366,8 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     onSelectOrgan,
     clip,
     particles,
+    organVisuals,
+    organVisualsKey,
     lesions,
     focusOnSelect,
   };
@@ -541,6 +560,200 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       return group;
     };
 
+    const organFxGroup = new THREE.Group();
+    scene.add(organFxGroup);
+    const organFx: OrganFxField[] = [];
+    let activeOrganVisuals: Record<string, OrganAbnormality> = {};
+    let activeVisualsKey = '';
+    let connectorLine: THREE.Line | null = null;
+
+    const removeConnector = () => {
+      if (!connectorLine) return;
+      organFxGroup.remove(connectorLine);
+      connectorLine.geometry.dispose();
+      (connectorLine.material as THREE.Material).dispose();
+      connectorLine = null;
+    };
+
+    const clearOrganFx = () => {
+      removeConnector();
+      for (const child of [...organFxGroup.children]) {
+        organFxGroup.remove(child);
+        if (child instanceof THREE.Points) {
+          child.geometry.dispose();
+          (child.material as THREE.Material).dispose();
+        } else if (child instanceof THREE.Sprite) {
+          child.material.dispose();
+        }
+      }
+      organFx.length = 0;
+    };
+
+    const refreshConnector = () => {
+      removeConnector();
+      const ids = Object.keys(activeOrganVisuals).filter(id => organLoaded.has(id));
+      if (ids.length < 2) return;
+      const points = ids
+        .map(id => organIndex.get(id)?.center)
+        .filter((point): point is THREE.Vector3 => Boolean(point));
+      if (points.length < 2) return;
+      const material = new THREE.LineBasicMaterial({
+        color: activeOrganVisuals[ids[0]]?.color ?? '#D5C8B0',
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+      });
+      connectorLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(points),
+        material,
+      );
+      organFxGroup.add(connectorLine);
+    };
+
+    const createOrganFx = (organId: string, state: OrganAbnormality) => {
+      if (organFx.some(field => field.organId === organId)) return;
+      const entry = organIndex.get(organId);
+      if (!entry) return;
+      const count = Math.round(80 + state.particle.density * 220);
+      const spread = Math.max(0.05, Math.min(0.12, entry.radius * 0.65));
+      const positions = new Float32Array(count * 3);
+      const seed = new Float32Array(count * 4);
+      for (let i = 0; i < count; i += 1) {
+        const theta = Math.random() * Math.PI * 2;
+        const radius = Math.pow(Math.random(), 0.6);
+        const y = Math.random() * 2 - 1;
+        const phase = Math.random() * Math.PI * 2;
+        seed[i * 4] = theta;
+        seed[i * 4 + 1] = radius;
+        seed[i * 4 + 2] = y;
+        seed[i * 4 + 3] = phase;
+        positions[i * 3] = entry.center.x + Math.cos(theta) * radius * spread;
+        positions[i * 3 + 1] = entry.center.y + y * spread;
+        positions[i * 3 + 2] = entry.center.z + Math.sin(theta) * radius * spread * 0.62;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const material = new THREE.PointsMaterial({
+        color: state.particle.color,
+        size: state.particle.kind === 'flame' ? 0.011 : 0.008,
+        transparent: true,
+        opacity: 0.78,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true,
+      });
+      const points = new THREE.Points(geometry, material);
+      points.frustumCulled = false;
+      points.renderOrder = 15;
+      organFxGroup.add(points);
+
+      const halo = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: glowTexture,
+          color: state.color,
+          transparent: true,
+          depthWrite: false,
+          depthTest: false,
+          blending: THREE.AdditiveBlending,
+          opacity: (state.halo ?? 0.3) * 0.5,
+        }),
+      );
+      halo.position.copy(entry.center);
+      const haloSize = Math.max(0.12, entry.radius * 1.25);
+      halo.scale.set(haloSize, haloSize, 1);
+      halo.renderOrder = 14;
+      organFxGroup.add(halo);
+
+      organFx.push({
+        organId,
+        points,
+        halo,
+        seed,
+        count,
+        spread,
+        anchor: entry.center.clone(),
+        state,
+      });
+    };
+
+    const styleOrgan = (organId: string, state: OrganAbnormality) => {
+      const material = organMaterials.get(organId);
+      if (!material) return;
+      material.color.set(state.color);
+      material.opacity = state.opacity;
+      material.roughness = state.roughness ?? 0.55;
+      material.transparent = state.opacity < 1;
+      material.depthWrite = state.opacity > 0.4;
+      material.emissive.set(state.color).multiplyScalar(0.35);
+      material.emissiveIntensity = 0.35;
+      material.needsUpdate = true;
+      organGroups.get(organId)?.scale.setScalar(state.scale);
+    };
+
+    const updateOrganFx = (now: number) => {
+      for (const field of organFx) {
+        const particle = field.state.particle;
+        const t = now * 0.001 * particle.speed;
+        const positions = field.points.geometry.getAttribute('position') as THREE.BufferAttribute;
+        for (let i = 0; i < field.count; i += 1) {
+          const theta = field.seed[i * 4];
+          const radiusSeed = field.seed[i * 4 + 1];
+          const ySeed = field.seed[i * 4 + 2];
+          const phase = field.seed[i * 4 + 3];
+          let radius = field.spread * (0.25 + radiusSeed * 0.75);
+          let angle = theta + (particle.flow === 'swirl' || particle.flow === 'exchange' ? t : 0);
+          let y = ySeed * field.spread * 0.7;
+
+          if (particle.flow === 'rise') {
+            y = (((ySeed * 0.5 + 0.5 + t * 0.25) % 1) * 2 - 1) * field.spread;
+          } else if (particle.flow === 'sink') {
+            y = (1 - ((ySeed * 0.5 + 0.5 + t * 0.25) % 1) * 2) * field.spread;
+          } else if (particle.flow === 'out') {
+            radius = field.spread * ((radiusSeed + t * 0.18) % 1);
+          } else if (particle.flow === 'in') {
+            radius = field.spread * (1 - ((radiusSeed + t * 0.18) % 1) * 0.85);
+          } else if (particle.flow === 'still') {
+            radius *= 0.92 + 0.08 * Math.sin(now * 0.001 + phase);
+          } else if (particle.flow === 'exchange') {
+            angle = theta + t * 0.5 + phase * 0.08;
+          }
+
+          positions.setXYZ(
+            i,
+            field.anchor.x + Math.cos(angle) * radius,
+            field.anchor.y + y,
+            field.anchor.z + Math.sin(angle) * radius * 0.62,
+          );
+        }
+        positions.needsUpdate = true;
+        const haloMaterial = field.halo.material;
+        haloMaterial.opacity =
+          (field.state.halo ?? 0.3) * 0.5 * (0.75 + 0.25 * Math.sin(now * 0.001 * 1.8));
+      }
+    };
+
+    const applyOrganVisuals = (visuals: Record<string, OrganAbnormality>) => {
+      activeOrganVisuals = visuals;
+      clearOrganFx();
+      for (const [organId, material] of organMaterials) {
+        const base = ORGAN_BY_ID[organId]?.color ?? '#c9a86a';
+        material.color.set(base);
+        material.opacity = 0.95;
+        material.roughness = 0.45;
+        material.transparent = true;
+        material.depthWrite = true;
+        material.emissive.set(base).multiplyScalar(0.22);
+        material.emissiveIntensity = 0.22;
+        material.needsUpdate = true;
+        organGroups.get(organId)?.scale.setScalar(1);
+      }
+      for (const [organId, state] of Object.entries(visuals)) {
+        styleOrgan(organId, state);
+        if (organLoaded.has(organId)) createOrganFx(organId, state);
+      }
+      refreshConnector();
+    };
+
     // Add one anatomy chunk as organ batches plus the remaining system parts.
     // Organs are re-centered around their own pivot so state visuals can scale
     // them without moving them away from their anatomical position.
@@ -586,6 +799,12 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         if (!group) continue;
         group.add(mesh);
         organLoaded.add(organId);
+        const state = activeOrganVisuals[organId];
+        if (state) {
+          styleOrgan(organId, state);
+          createOrganFx(organId, state);
+          refreshConnector();
+        }
       }
       for (const [system, geometries] of systemBatches) {
         const merged = mergeGeometries(geometries, false);
@@ -635,6 +854,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     let currentAnchors = organAnchors;
     let lastLesionKey = '';
     let lastLabelId = '';
+    let lastVisualKey = '';
     let focusKey = '';
     let lastClip = -1;
     let lastFrame = performance.now();
@@ -734,9 +954,16 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       const current = propsRef.current;
       const lesionKey = current.lesions.map(l => `${l.id}:${l.organId}:${l.severity}`).join('|');
       const labelId = current.selectedOrganId ?? '';
-      if (lesionKey === lastLesionKey && labelId === lastLabelId) return;
+      if (
+        lesionKey === lastLesionKey &&
+        labelId === lastLabelId &&
+        current.organVisualsKey === lastVisualKey
+      ) {
+        return;
+      }
       lastLesionKey = lesionKey;
       lastLabelId = labelId;
+      lastVisualKey = current.organVisualsKey;
       clearMarkers();
 
       const findAnchor = (organId: string) =>
@@ -775,8 +1002,10 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       if (current.selectedOrganId && !current.lesions.length) {
         const anchor = findAnchor(current.selectedOrganId);
         if (anchor) {
+          const state = current.organVisuals?.[current.selectedOrganId];
           selectionSprite.position.copy(anchor.point);
-          selectionSprite.material.color.set(anchor.color);
+          selectionSprite.material.color.set(state?.color ?? anchor.color);
+          selectionSprite.scale.setScalar(state ? 0.28 : 0.22);
           selectionSprite.visible = true;
           const meta = ORGAN_META.find(o => o.id === current.selectedOrganId);
           const label = document.createElement('div');
@@ -867,6 +1096,11 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       lastFrame = now;
       const current = propsRef.current;
 
+      if (current.organVisualsKey !== activeVisualsKey) {
+        activeVisualsKey = current.organVisualsKey;
+        applyOrganVisuals(current.organVisuals);
+      }
+
       for (const [system, group] of systemGroups) {
         const bodyClipped = system === 'integumentary' && current.clip > 0.06;
         group.visible = current.visibleSystems.includes(system) && !bodyClipped;
@@ -923,6 +1157,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         qi.points.visible = false;
         damp.points.visible = false;
       }
+
+      organFxGroup.visible = current.particles && organFx.length > 0;
+      if (organFxGroup.visible) updateOrganFx(now);
 
       if (current.selectedOrganId && current.focusOnSelect) {
         const anchor = currentAnchors.find(item => item.id === current.selectedOrganId);
@@ -1045,6 +1282,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       renderer.domElement.removeEventListener('pointerup', onPointerUp);
       renderer.domElement.removeEventListener('pointercancel', onPointerCancel);
       controls.dispose();
+      clearOrganFx();
       scene.traverse(obj => {
         if (obj instanceof THREE.Mesh || obj instanceof THREE.Points) {
           obj.geometry.dispose();

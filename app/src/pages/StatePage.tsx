@@ -1,11 +1,35 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ArrowRight, Droplets, Eye, EyeOff, Info, RotateCcw, Sparkles, Wind } from 'lucide-react';
 import { HumanBodyCanvas, type BodyViewerHandle } from '../anatomy/HumanBodyCanvas';
 import type { SystemId } from '../anatomy/atlas';
+import { ORGAN_BY_ID } from '../data';
+import { resolvePatternVisual } from '../data/patternVisuals';
 import { go } from '../navigation';
 import { useCaseStore, usePrimaryPattern } from '../store';
 
 const VISIBLE: SystemId[] = ['integumentary', 'skeletal', 'cardiac', 'respiratory', 'digestive', 'urinary', 'lymphatic', 'endocrine'];
+
+const PARTICLE_LABEL: Record<string, string> = {
+  mist: '雾状微粒',
+  flame: '火焰粒子',
+  ice: '冰晶粒子',
+  steam: '蒸汽团',
+  clot: '瘀斑粒子',
+  wave: '流体波浪',
+  qiline: '条索气浪',
+  vortex: '旋涡粒子',
+  dust: '干燥粉尘',
+};
+
+const FLOW_LABEL: Record<string, string> = {
+  rise: '上升',
+  sink: '下沉',
+  out: '向外扩散',
+  in: '向内收束',
+  swirl: '旋转',
+  still: '停滞',
+  exchange: '双向交流',
+};
 
 const STATE_METRICS = [
   { id: 'qi', label: '气虚', value: 68, color: '#4fb3a9', note: '乏力、语声低微、脉细弱' },
@@ -17,6 +41,7 @@ export default function StatePage() {
   const viewer = useRef<BodyViewerHandle>(null);
   const pattern = usePrimaryPattern();
   const patient = useCaseStore(state => state.patient);
+  const visual = useMemo(() => resolvePatternVisual(pattern), [pattern]);
   const [particles, setParticles] = useState(true);
   const [selected, setSelected] = useState('heart');
 
@@ -28,7 +53,7 @@ export default function StatePage() {
             <div className="viewer-toolbar-left">
               <span className="live-badge teal"><i /> 当前状态</span>
               <span className="toolbar-sep" />
-              <span className="toolbar-note"><Sparkles size={12} /> 气机 / 湿象粒子</span>
+              <span className="toolbar-note"><Sparkles size={12} /> 病位粒子 / 气机示意</span>
             </div>
             <div className="viewer-toolbar-right">
               <button className={`viewer-btn ${particles ? 'active' : ''}`} onClick={() => setParticles(value => !value)} aria-label="切换粒子">
@@ -45,6 +70,7 @@ export default function StatePage() {
             selectedOrganId={selected}
             onSelectOrgan={setSelected}
             particles={particles}
+            organVisuals={visual.organs}
             focusOnSelect
           />
           <div className="state-overlay">
@@ -54,9 +80,9 @@ export default function StatePage() {
               <p>{patient.alias} · 当前状态切片</p>
             </div>
             <div className="state-particle-key">
+              <span><i style={{ background: visual.accent }} /> 病位器官</span>
               <span><i className="particle-dot teal" /> 气机</span>
               <span><i className="particle-dot gold" /> 湿浊</span>
-              <span><i className="particle-dot red" /> 病位</span>
             </div>
           </div>
         </section>
@@ -80,7 +106,7 @@ export default function StatePage() {
               ))}
             </div>
             <button className={`switch-row ${particles ? 'on' : ''}`} onClick={() => setParticles(value => !value)}>
-              <span><Wind size={14} /> 显示气机粒子</span>
+              <span><Wind size={14} /> 显示病位粒子</span>
               <i />
             </button>
           </section>
@@ -88,21 +114,38 @@ export default function StatePage() {
           <section className="panel side-panel">
             <div className="panel-head"><div><span className="panel-kicker">LEGEND / 图例</span><h3>颜色与动效含义</h3></div></div>
             <div className="legend-list">
-              <div><span className="legend-orb teal" /><div><b>青金 · 气机</b><p>缓慢上升与回旋，表示气机运行；强度对应气虚程度。</p></div></div>
-              <div><span className="legend-orb gold" /><div><b>金色 · 湿浊</b><p>密度更高、速度更慢，表示湿象偏重；不作为真实体液测量。</p></div></div>
-              <div><span className="legend-orb red" /><div><b>朱砂 · 病位</b><p>只标记有证据支持的主要病位，面积受控，不铺满全屏。</p></div></div>
+              {Object.entries(visual.organs).map(([organId, state]) => {
+                const meta = ORGAN_BY_ID[organId];
+                return (
+                  <div key={organId}>
+                    <span className="legend-orb" style={{ background: state.color }} />
+                    <div>
+                      <b>{meta?.label ?? organId} · {PARTICLE_LABEL[state.particle.kind]}</b>
+                      <p>
+                        {FLOW_LABEL[state.particle.flow]} · 密度 {Math.round(state.particle.density * 100)}%
+                        · 透明度 {Math.round(state.opacity * 100)}%
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+              {!Object.keys(visual.organs).length && (
+                <div><span className="legend-orb gold" /><div><b>暂无可映射器官</b><p>当前证型未对应独立器官网格。</p></div></div>
+              )}
+              <div><span className="legend-orb teal" /><div><b>青金 · 气机</b><p>底层气机示意，始终弱于病位粒子。</p></div></div>
             </div>
+            <p className="small-copy" style={{ marginTop: 9 }}>{visual.note}</p>
           </section>
 
           <section className="panel side-panel">
             <div className="panel-head"><div><span className="panel-kicker">INTERPRETATION</span><h3>一句话解释</h3></div></div>
             <p className="interpretation">
-              “{patient.alias}目前以<strong>心脾两虚</strong>为主线：脾气虚则气血生化不足，心血虚则心神失养。
-              画面中的青金气流偏弱、金色湿点偏密，是为了把这两个方向同时讲清楚。”
+              “{patient.alias}目前以<strong>{pattern?.name ?? '待确认证型'}</strong>为主线。
+              {visual.note}画面中的颜色、粒子密度与流向，都按证型视觉规则生成，不作真实病理测量。”
             </p>
             <div className="state-actions">
               <button className={`toggle-pill ${particles ? 'on' : ''}`} onClick={() => setParticles(value => !value)}>
-                <Droplets size={13} /> 湿象粒子 {particles ? '开' : '关'}
+                <Droplets size={13} /> 病位粒子 {particles ? '开' : '关'}
               </button>
               <button className="text-btn" onClick={() => go('inside')}>调整器官 <ArrowRight size={13} /></button>
             </div>
