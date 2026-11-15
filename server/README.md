@@ -50,6 +50,44 @@ When `APP_ACCESS_PASSWORD` is set, case APIs require a signed HttpOnly session
 cookie. If it is empty, login is disabled for local-only use. The login
 password is not stored in the browser.
 
+### Set your own fixed password
+
+From the `server` directory:
+
+```powershell
+npm run auth:set-password
+```
+
+The script prompts twice without echoing, updates only
+`APP_ACCESS_PASSWORD` in `.env.local`, and preserves the rest of the file.
+Restart the server afterward. To invalidate every existing login session at
+the same time:
+
+```powershell
+npm run auth:set-password -- --rotate-session
+```
+
+The password is never printed, logged, or sent to the browser.
+
+## Database location
+
+Default database:
+
+```text
+server/data/qihuang.sqlite
+```
+
+Inspect the exact absolute path and row counts:
+
+```powershell
+cd server
+npm run db:info
+```
+
+`DATABASE_PATH` in `.env.local` can override the location. For a backup, stop
+the server and copy the whole `server/data` directory, including `-wal` and
+`-shm`.
+
 ## Endpoints
 
 - `GET /api/health` (public)

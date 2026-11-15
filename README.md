@@ -48,6 +48,28 @@ Docker 构建和部署选项见 [server/DEPLOYMENT.md](<server/DEPLOYMENT.md>)�
 - 报告为 A4 打印样式，浏览器打印/另存 PDF。
 - **单用户 Backend Lite：没有多用户 RBAC；医生密码在 `server/.env.local`，不要直接公开到公网。**
 
+## 本机密码与数据
+
+设置自己的固定登录密码：
+
+```powershell
+cd server
+npm run auth:set-password
+```
+
+重启 server 后生效。数据库默认位置：
+
+```text
+server/data/qihuang.sqlite
+```
+
+查看绝对路径和记录数：
+
+```powershell
+cd server
+npm run db:info
+```
+
 ## 文档
 
 - [项目决策手册](<项目决策手册.md>)

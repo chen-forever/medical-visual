@@ -34,6 +34,9 @@ named volume keeps the SQLite database across container restarts.
 
 If you put HTTPS in front of the container, also set `COOKIE_SECURE=true`.
 
+For a local non-container install, set the password with
+`npm run auth:set-password` instead of editing the file by hand.
+
 For a public deployment also set:
 
 ```text

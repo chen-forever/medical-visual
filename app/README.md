@@ -89,7 +89,8 @@ node server/index.mjs
 
 - 病例、分析运行、药方、报告快照保存在本地 Node 服务端的 SQLite 数据库（`server/data/qihuang.sqlite`）。
 - 浏览器只保留草稿缓存；清除浏览器不会删除服务端病例。
-- 单医生访问密码 + HttpOnly 会话；密码在 `server/.env.local` 的 `APP_ACCESS_PASSWORD`，不要在公网直接暴露。
+- 单医生访问密码 + HttpOnly 会话；在 `server` 目录运行 `npm run auth:set-password` 可设置自己的固定密码，重启服务生效。
+- 查看数据库路径和记录数：`cd server && npm run db:info`。
 - 当前是单用户后端，没有多用户角色/RBAC；正式诊所部署前需要补权限与审计策略。
 - 症状分析已经接入真实 DeepSeek API（通过本地 BFF），失败时保留旧分析并显示错误。
 - 系统不诊断、不自动开方、不承诺疗效；时间轴是示意推演。

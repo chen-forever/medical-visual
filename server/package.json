@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "node index.mjs",
     "start": "node index.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "auth:set-password": "node set-password.mjs",
+    "db:info": "node db-info.mjs"
   }
 }
