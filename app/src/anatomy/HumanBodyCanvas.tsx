@@ -37,6 +37,108 @@ interface Props {
 
 const MODEL_BASE = '/models/human-atlas/';
 
+/**
+ * Progressive loading: the body surface and the organs used by the default
+ * view are assembled first, then the remaining anatomy chunks stream in.
+ * The four core chunks total ~8.8 MB gzipped (vs ~33 MB for the whole atlas).
+ */
+const CORE_CHUNK_BUDGET = 10 * 1024 * 1024;
+const CORE_SYSTEMS: SystemId[] = [
+  'integumentary',
+  'cardiac',
+  'respiratory',
+  'digestive',
+  'urinary',
+  'lymphatic',
+  'endocrine',
+];
+
+const SYSTEM_PRIORITY: Partial<Record<SystemId, number>> = {
+  integumentary: 120,
+  skeletal: 90,
+  cardiac: 80,
+  respiratory: 70,
+  digestive: 70,
+  urinary: 50,
+  lymphatic: 40,
+  endocrine: 40,
+  nervous: 30,
+  arterial: 20,
+  venous: 15,
+  muscular: 8,
+};
+
+let atlasCache: Promise<Atlas> | null = null;
+const coreChunkCache = new Map<number, ArrayBuffer>();
+
+function fetchAtlas(): Promise<Atlas> {
+  atlasCache ??= fetch(`${MODEL_BASE}atlas.json`)
+    .then(response => {
+      if (!response.ok) throw new Error('模型目录加载失败');
+      return response.json() as Promise<Atlas>;
+    })
+    .catch(error => {
+      atlasCache = null;
+      throw error;
+    });
+  return atlasCache;
+}
+
+function chunkBytes(atlas: Atlas, index: number) {
+  return atlas.chunks[index]?.gzipBytes ?? atlas.chunks[index]?.bytes ?? 0;
+}
+
+/** Pick the smallest useful set of chunks for the first frame. */
+function pickCoreChunks(atlas: Atlas): number[] {
+  const picked = new Set<number>();
+  let bytes = 0;
+  for (const system of CORE_SYSTEMS) {
+    let best = -1;
+    let bestTriangles = 0;
+    for (const part of atlas.parts) {
+      if (part.system !== system || picked.has(part.chunk)) continue;
+      if (part.indexCount <= bestTriangles) continue;
+      if (bytes + chunkBytes(atlas, part.chunk) > CORE_CHUNK_BUDGET) continue;
+      best = part.chunk;
+      bestTriangles = part.indexCount;
+    }
+    if (best >= 0) {
+      picked.add(best);
+      bytes += chunkBytes(atlas, best);
+    }
+  }
+  if (!picked.size) picked.add(0);
+  return [...picked];
+}
+
+/** Order the rest so visually dominant anatomy arrives before detail layers. */
+function rankBackgroundChunks(atlas: Atlas, core: number[]): number[] {
+  const coreSet = new Set(core);
+  return atlas.chunks
+    .map((_, index) => {
+      const triangles = atlas.parts
+        .filter(part => part.chunk === index)
+        .reduce((sum, part) => sum + (SYSTEM_PRIORITY[part.system] ?? 5) * part.indexCount, 0);
+      return { index, triangles };
+    })
+    .filter(item => !coreSet.has(item.index))
+    .sort((a, b) => b.triangles - a.triangles)
+    .map(item => item.index);
+}
+
+async function fetchChunkBuffer(
+  atlas: Atlas,
+  index: number,
+  signal?: AbortSignal,
+): Promise<ArrayBuffer> {
+  const cached = coreChunkCache.get(index);
+  if (cached) return cached;
+  const chunk = atlas.chunks[index];
+  const filename = (chunk.gzip ?? chunk.url).split('/').pop() ?? chunk.url;
+  const response = await fetch(`${MODEL_BASE}${filename}`, { signal });
+  return decodeModelResponse(response, chunk.bytes, Boolean(chunk.gzip));
+}
+
 const STYLE: Record<SystemId, { color: string; opacity: number; roughness: number }> = {
   skeletal: { color: '#d7c7a4', opacity: 0.5, roughness: 0.62 },
   muscular: { color: '#92564c', opacity: 0.12, roughness: 0.6 },
@@ -213,6 +315,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [ready, setReady] = useState(false);
+  const [detailLoaded, setDetailLoaded] = useState(0);
+  const [detailTotal, setDetailTotal] = useState(0);
+  const [degraded, setDegraded] = useState(false);
 
   useImperativeHandle(ref, () => ({
     zoomIn: () => apiRef.current?.zoomIn(),
@@ -309,13 +414,79 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     scene.add(ring2);
 
     const clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 10);
-    const systemMeshes = new Map<SystemId, THREE.Mesh>();
+    const systemGroups = new Map<SystemId, THREE.Group>();
     const materials = new Map<SystemId, THREE.Material>();
     const organAnchors: ReturnType<typeof buildOrganAnchors> = [];
+    const controller = new AbortController();
     const markerGroup = new THREE.Group();
     scene.add(markerGroup);
     const labelGroup = new THREE.Group();
     scene.add(labelGroup);
+
+    const getSystemMaterial = (system: SystemId) => {
+      const existing = materials.get(system);
+      if (existing) return existing;
+      let material: THREE.Material;
+      if (system === 'integumentary') {
+        material = makeBodyMaterial();
+      } else {
+        const style = STYLE[system];
+        material = new THREE.MeshStandardMaterial({
+          color: style.color,
+          roughness: style.roughness,
+          metalness: 0.04,
+          transparent: style.opacity < 1,
+          opacity: style.opacity,
+          side: THREE.DoubleSide,
+          depthWrite: style.opacity > 0.4,
+        });
+      }
+      materials.set(system, material);
+      return material;
+    };
+
+    // Add one anatomy chunk as a set of per-system meshes. Keeping chunk
+    // batches separate lets later chunks append without rebuilding the scene.
+    const addChunk = (index: number, buffer: ArrayBuffer) => {
+      const batches = new Map<SystemId, THREE.BufferGeometry[]>();
+      for (const part of atlas.parts) {
+        if (part.chunk !== index) continue;
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute(
+          'position',
+          new THREE.BufferAttribute(new Float32Array(buffer, part.positions, part.vertexCount * 3), 3),
+        );
+        geometry.setAttribute(
+          'normal',
+          new THREE.BufferAttribute(new Int16Array(buffer, part.normals, part.vertexCount * 3), 3, true),
+        );
+        geometry.setIndex(
+          new THREE.BufferAttribute(new Uint32Array(buffer, part.indices, part.indexCount), 1),
+        );
+        const list = batches.get(part.system as SystemId) ?? [];
+        list.push(geometry);
+        batches.set(part.system as SystemId, list);
+      }
+      for (const [system, geometries] of batches) {
+        const merged = mergeGeometries(geometries, false);
+        geometries.forEach(geometry => geometry.dispose());
+        if (!merged) continue;
+        merged.computeBoundingSphere();
+        const mesh = new THREE.Mesh(merged, getSystemMaterial(system));
+        mesh.frustumCulled = false;
+        mesh.renderOrder = system === 'integumentary' ? 2 : 1;
+        let group = systemGroups.get(system);
+        if (!group) {
+          group = new THREE.Group();
+          group.name = `system-${system}`;
+          scene.add(group);
+          systemGroups.set(system, group);
+        }
+        group.add(mesh);
+      }
+    };
+
+    let atlas: Atlas;
 
     const glowTexture = makeGlowTexture();
     const selectionSprite = new THREE.Sprite(
@@ -493,7 +664,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
         -((event.clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(pointer, camera);
-      const visibleMeshes = [...systemMeshes.values()].filter(mesh => mesh.visible);
+      const visibleMeshes = [...systemGroups.values()]
+        .filter(group => group.visible)
+        .flatMap(group => group.children);
       const hits = raycaster.intersectObjects(visibleMeshes, false);
       if (!hits.length) return;
       hitPoint.copy(hits[0].point);
@@ -521,9 +694,9 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       lastFrame = now;
       const current = propsRef.current;
 
-      for (const [system, mesh] of systemMeshes) {
+      for (const [system, group] of systemGroups) {
         const bodyClipped = system === 'integumentary' && current.clip > 0.06;
-        mesh.visible = current.visibleSystems.includes(system) && !bodyClipped;
+        group.visible = current.visibleSystems.includes(system) && !bodyClipped;
       }
       ring.visible = current.clip < 0.02;
       ring2.visible = current.clip < 0.02;
@@ -604,95 +777,59 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     const start = async () => {
       try {
         setProgress(2);
-        const response = await fetch(`${MODEL_BASE}atlas.json`);
-        if (!response.ok) throw new Error('模型目录加载失败');
-        const atlas = (await response.json()) as Atlas;
+        atlas = await fetchAtlas();
         if (disposed) return;
-        setProgress(8);
-
-        const conceptNames = new Map(atlas.concepts.map(c => [c.id, c.name]));
-        const groups = new Map<SystemId, THREE.BufferGeometry[]>();
-        let loaded = 0;
-        let cursor = 0;
-
-        const loadChunk = async (index: number) => {
-          const chunk = atlas.chunks[index];
-          const filename = (chunk.gzip ?? chunk.url).split('/').pop() ?? chunk.url;
-          const url = `${MODEL_BASE}${filename}`;
-          const res = await fetch(url);
-          const buffer = await decodeModelResponse(res, chunk.bytes, Boolean(chunk.gzip));
-          if (disposed) return;
-          const parts = atlas.parts.filter(part => part.chunk === index);
-          for (const part of parts) {
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute(
-              'position',
-              new THREE.BufferAttribute(new Float32Array(buffer, part.positions, part.vertexCount * 3), 3),
-            );
-            geometry.setAttribute(
-              'normal',
-              new THREE.BufferAttribute(new Int16Array(buffer, part.normals, part.vertexCount * 3), 3, true),
-            );
-            geometry.setIndex(
-              new THREE.BufferAttribute(new Uint32Array(buffer, part.indices, part.indexCount), 1),
-            );
-            geometry.computeBoundingSphere();
-            const list = groups.get(part.system as SystemId) ?? [];
-            list.push(geometry);
-            groups.set(part.system as SystemId, list);
-          }
-          loaded += 1;
-          setProgress(8 + Math.round((loaded / atlas.chunks.length) * 84));
-          await new Promise(resolve => window.setTimeout(resolve, 0));
-        };
-
-        await Promise.all(
-          Array.from({ length: 4 }, async () => {
-            while (cursor < atlas.chunks.length) {
-              const index = cursor++;
-              await loadChunk(index);
-            }
-          }),
-        );
-        if (disposed) return;
+        setProgress(6);
 
         currentAnchors = buildOrganAnchors(atlas);
         organAnchors.push(...currentAnchors);
 
-        for (const [system, geometries] of groups) {
-          if (!geometries.length) continue;
-          const merged = mergeGeometries(geometries, false);
-          geometries.forEach(geometry => geometry.dispose());
-          if (!merged) continue;
-          let material: THREE.Material;
-          if (system === 'integumentary') {
-            material = makeBodyMaterial();
-          } else {
-            const style = STYLE[system];
-            material = new THREE.MeshStandardMaterial({
-              color: style.color,
-              roughness: style.roughness,
-              metalness: 0.04,
-              transparent: style.opacity < 1,
-              opacity: style.opacity,
-              side: THREE.DoubleSide,
-              depthWrite: style.opacity > 0.4,
-            });
-          }
-          const mesh = new THREE.Mesh(merged, material);
-          mesh.frustumCulled = false;
-          mesh.renderOrder = system === 'integumentary' ? 2 : 1;
-          scene.add(mesh);
-          systemMeshes.set(system, mesh);
-          materials.set(system, material);
-        }
+        const coreChunks = pickCoreChunks(atlas);
+        const coreSet = new Set(coreChunks);
+        const remaining = rankBackgroundChunks(atlas, coreChunks);
+        setDetailTotal(remaining.length);
 
-        currentAnchors = buildOrganAnchors(atlas);
+        let coreLoaded = 0;
+        await Promise.all(
+          coreChunks.map(async index => {
+            const buffer = await fetchChunkBuffer(atlas, index, controller.signal);
+            if (coreSet.has(index)) coreChunkCache.set(index, buffer);
+            if (disposed) return;
+            addChunk(index, buffer);
+            coreLoaded += 1;
+            setProgress(6 + Math.round((coreLoaded / coreChunks.length) * 94));
+          }),
+        );
+        if (disposed) return;
+
+        // First frame is usable now; the remaining anatomy streams in without
+        // blocking zoom, layer toggles, or organ selection.
         setProgress(100);
         setReady(true);
         onReady?.();
+
+        const queue = remaining.slice();
+        let detailsLoaded = 0;
+        const workers = Array.from({ length: 3 }, async () => {
+          while (queue.length) {
+            if (disposed) return;
+            const index = queue.shift();
+            if (index === undefined) return;
+            try {
+              const buffer = await fetchChunkBuffer(atlas, index, controller.signal);
+              if (disposed) return;
+              addChunk(index, buffer);
+            } catch {
+              if (!disposed && !controller.signal.aborted) setDegraded(true);
+            }
+            if (disposed) return;
+            detailsLoaded += 1;
+            setDetailLoaded(detailsLoaded);
+          }
+        });
+        await Promise.all(workers);
       } catch (err) {
-        if (!disposed) {
+        if (!disposed && !controller.signal.aborted) {
           setError(err instanceof Error ? err.message : '模型加载失败');
         }
       }
@@ -703,6 +840,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
 
     return () => {
       disposed = true;
+      controller.abort();
       cancelAnimationFrame(frame);
       observer.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onPointerDown);
@@ -725,12 +863,21 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     };
   }, [onReady]);
 
+  const detailPct = detailTotal ? Math.round((detailLoaded / detailTotal) * 100) : 100;
+  const status = !ready
+    ? '模型载入中'
+    : degraded
+      ? '部分图层未载入'
+      : detailLoaded < detailTotal
+        ? `细节载入 ${detailPct}%`
+        : '静止模式 · 仅缩放';
+
   return (
     <div className={`body-viewer ${className}`}>
       <div ref={hostRef} className="body-viewer-host" />
       <div className="viewer-corner viewer-corner-left">
         <span className="viewer-live-dot" />
-        <span>{ready ? '静止模式 · 仅缩放' : '模型载入中'}</span>
+        <span>{status}</span>
       </div>
       <div className="viewer-corner viewer-corner-right">
         <span>{SYSTEM_LABELS[visibleSystems[0]] ?? '数字人体'}</span>
@@ -746,9 +893,12 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
             <div className="viewer-progress">
               <i style={{ width: `${Math.max(2, progress)}%` }} />
             </div>
-            <small>{progress}% · 模型约 33 MB，首次加载会稍慢</small>
+            <small>{progress}% · 首屏约 9 MB，其余解剖细节后台载入</small>
           </div>
         </div>
+      )}
+      {ready && degraded && (
+        <div className="viewer-degraded">部分图层未载入 · 刷新可重试</div>
       )}
       {error && (
         <div className="viewer-error">
