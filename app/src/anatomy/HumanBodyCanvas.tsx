@@ -86,6 +86,7 @@ function organPose(organId: string): THREE.Vector3 {
  * The four core chunks total ~8.8 MB gzipped (vs ~33 MB for the whole atlas).
  */
 const CORE_CHUNK_BUDGET = 10 * 1024 * 1024;
+const MAX_ORGAN_PARTICLES = 340;
 const CORE_SYSTEMS: SystemId[] = [
   'integumentary',
   'cardiac',
@@ -651,9 +652,19 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
     };
 
     const refreshConnector = () => {
-      removeConnector();
       const ids = Object.keys(activeOrganVisuals).filter(id => organLoaded.has(id));
-      if (ids.length < 2) return;
+      if (ids.length < 2) {
+        removeConnector();
+        return;
+      }
+      if (connectorLine) {
+        (connectorLine.material as THREE.LineBasicMaterial).color.set(
+          activeOrganVisuals[ids[0]]?.color ?? '#D5C8B0',
+        );
+        (connectorLine.material as THREE.LineBasicMaterial).opacity = 0.2;
+        return;
+      }
+      removeConnector();
       const points = ids
         .map(id => {
           const center = organIndex.get(id)?.center;
@@ -680,7 +691,8 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       const entry = organIndex.get(organId);
       if (!entry) return;
       const anchor = entry.center.clone().add(organPose(organId));
-      const count = Math.round(110 + state.particle.density * 260);
+      const count = MAX_ORGAN_PARTICLES;
+      const activeCount = Math.max(12, Math.round(110 + state.particle.density * 260));
       const spread = Math.max(0.06, Math.min(0.14, entry.radius * 0.75));
       const positions = new Float32Array(count * 3);
       const seed = new Float32Array(count * 4);
@@ -699,6 +711,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       }
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setDrawRange(0, activeCount);
       const material = new THREE.PointsMaterial({
         color: state.particle.color,
         size: state.particle.kind === 'flame' ? 0.014 : 0.012,
@@ -749,7 +762,7 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       material.color.set(state.color);
       // State pages want to see the particle field through the organ; a little
       // extra transparency also keeps the neighbouring organs from blocking it.
-      material.opacity = Math.min(state.opacity, 0.5);
+      material.opacity = Math.min(state.opacity, 0.65);
       material.roughness = state.roughness ?? 0.55;
       material.transparent = true;
       material.depthTest = false;
@@ -806,8 +819,36 @@ export const HumanBodyCanvas = forwardRef<BodyViewerHandle, Props>(function Huma
       }
     };
 
+    const activeParticles = (state: OrganAbnormality) =>
+      Math.max(12, Math.round(110 + state.particle.density * 260));
+
     const applyOrganVisuals = (visuals: Record<string, OrganAbnormality>) => {
+      const previousIds = Object.keys(activeOrganVisuals);
+      const nextIds = Object.keys(visuals);
+      const sameOrganSet =
+        previousIds.length === nextIds.length && nextIds.every(id => previousIds.includes(id));
       activeOrganVisuals = visuals;
+
+      // Timeline playback changes only numeric parameters. Reuse the existing
+      // meshes/particles instead of rebuilding the scene at animation speed.
+      if (sameOrganSet) {
+        for (const [organId, state] of Object.entries(visuals)) {
+          styleOrgan(organId, state);
+          const field = organFx.find(item => item.organId === organId);
+          if (field) {
+            field.state = state;
+            (field.points.material as THREE.PointsMaterial).color.set(state.particle.color);
+            field.points.geometry.setDrawRange(0, activeParticles(state));
+            field.halo.material.color.set(state.color);
+            field.halo.material.opacity = (state.halo ?? 0.3) * 0.58;
+          } else if (organLoaded.has(organId)) {
+            createOrganFx(organId, state);
+          }
+        }
+        refreshConnector();
+        return;
+      }
+
       clearOrganFx();
       for (const [organId, material] of organMaterials) {
         const base = ORGAN_BY_ID[organId]?.color ?? '#c9a86a';

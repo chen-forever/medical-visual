@@ -1,4 +1,5 @@
 import type { Pattern } from '../types';
+import { ORGAN_BY_ID } from '../data';
 
 export type ParticleKind =
   | 'mist'
@@ -167,6 +168,83 @@ function fallbackVisual(pattern: Pattern): PatternVisual {
     connector: Object.keys(organs).length > 1 ? { color: config.color, opacity: 0.15 } : undefined,
     note,
   };
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function mixHex(from: string, to: string, amount: number) {
+  const parse = (hex: string) => {
+    const clean = hex.replace('#', '');
+    return [0, 2, 4].map(offset => parseInt(clean.slice(offset, offset + 2), 16));
+  };
+  const a = parse(from);
+  const b = parse(to);
+  const t = clamp01(amount);
+  return `#${a
+    .map((value, index) => Math.round(value + (b[index] - value) * t).toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
+function temporalOrgan(
+  organId: string,
+  state: OrganAbnormality,
+  t: number,
+): OrganAbnormality {
+  const normalColor = ORGAN_BY_ID[organId]?.color ?? state.color;
+  return {
+    ...state,
+    color: mixHex(state.color, normalColor, 0.58 * t),
+    opacity: state.opacity + (0.85 - state.opacity) * 0.5 * t,
+    scale: state.scale + (1 - state.scale) * 0.85 * t,
+    glow: (state.glow ?? 0.35) * (1 - 0.65 * t) + 0.12 * t,
+    halo: (state.halo ?? 0.3) * (1 - 0.55 * t),
+    particle: {
+      ...state.particle,
+      color: mixHex(state.particle.color, normalColor, 0.38 * t),
+      density: state.particle.density * (1 - 0.8 * t),
+      speed: state.particle.speed * (1 - 0.4 * t),
+    },
+  };
+}
+
+/**
+ * Timeline variant: 0 = day-0 pathology, 1 = day-30 treated state.
+ * The same organ model keeps its identity; colour, scale, glow and particle
+ * density move back toward the healthy organ instead of switching scenes.
+ */
+export function resolveTimelineVisual(
+  pattern: Pattern | undefined | null,
+  recovery: number,
+): PatternVisual {
+  const base = resolvePatternVisual(pattern);
+  const t = clamp01(recovery);
+  const organs: Record<string, OrganAbnormality> = {};
+
+  for (const [organId, state] of Object.entries(base.organs)) {
+    organs[organId] = temporalOrgan(organId, state, t);
+  }
+
+  return {
+    ...base,
+    accent: mixHex(base.accent, '#9a7b3f', 0.25 * t),
+    organs,
+    connector: base.connector
+      ? { ...base.connector, opacity: base.connector.opacity * (1 - 0.7 * t) }
+      : undefined,
+  };
+}
+
+/** A secondary lesion organ (e.g. stomach) that is not the primary pattern. */
+export function resolveSecondaryOrganVisual(
+  organId: string,
+  recovery: number,
+): OrganAbnormality | null {
+  const meta = ORGAN_BY_ID[organId];
+  if (!meta) return null;
+  const base = organ('#B9875F', 0.55, 0.96, 'qiline', 0.24, 0.35, 'sink', 0.62, 0.28, 0.2);
+  return temporalOrgan(organId, base, clamp01(recovery));
 }
 
 export function resolvePatternVisual(pattern?: Pattern | null): PatternVisual {

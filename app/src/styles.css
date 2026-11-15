@@ -973,6 +973,32 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
 .timeline-note { display: inline-flex; align-items: center; gap: 5px; color: var(--faint); font-size: 8.5px; }
 .timeline-note svg { color: var(--teal); }
 .timeline-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; }
+.timeline-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.timeline-viewer-panel {
+  position: relative;
+  height: min(52vh, 520px);
+  min-height: 420px;
+  overflow: hidden;
+}
+.timeline-viewer-panel .body-viewer { flex: 1; min-height: 0; }
+.timeline-viewer-hud {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 8;
+  padding: 9px 11px;
+  border: 1px solid rgba(201, 168, 106, 0.28);
+  border-radius: 7px;
+  background: rgba(5, 7, 10, 0.74);
+  color: var(--text);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.timeline-viewer-hud .panel-kicker { display: block; margin-bottom: 2px; font-size: 7.5px; }
+.timeline-viewer-hud strong { display: block; font-family: var(--serif); font-size: 14px; font-weight: 500; color: var(--gold-2); }
+.timeline-organ-key { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 5px; color: var(--faint); font-size: 8px; }
+.timeline-organ-key span { display: inline-flex; align-items: center; gap: 4px; }
+.timeline-organ-key i { width: 5px; height: 5px; border-radius: 50%; }
 .chart-panel { padding: 20px 20px 14px; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 9px; color: var(--faint); font-size: 7.5px; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 4px; }
@@ -1472,6 +1498,9 @@ button.tag:hover { border-color: rgba(201, 168, 106, 0.34); color: var(--text); 
   .chart-foot { flex-direction: column; gap: 3px; }
   .timeline-side { grid-template-columns: 1fr; }
   .timeline-side > * { grid-column: auto !important; }
+  .timeline-viewer-panel { height: 440px; min-height: 0; }
+  .timeline-viewer-hud { left: 10px; bottom: 10px; padding: 7px 9px; }
+  .timeline-viewer-hud strong { font-size: 12px; }
   .report-paper { padding: 22px 18px; font-size: 9px; }
   .report-header { flex-direction: column; gap: 8px; }
   .report-meta { align-items: flex-start; }
